@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HeyGen Avatar Test</title>
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    
+    .control-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background-color: #f5f5f5;
+      padding: 15px;
+      border-radius: 8px;
+    }
+    
+    .button-row {
+      display: flex;
+      gap: 10px;
+    }
+    
+    button {
+      padding: 8px 16px;
+      background-color: #0066cc;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    
+    .api-key-input {
+      padding: 8px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    
+    .text-input {
+      display: flex;
+      gap: 10px;
+    }
+    
+    .text-input input {
+      flex: 1;
+      padding: 8px;
+    }
+    
+    #avatarVideo {
+      width: 100%;
+      height: 450px;
+      background-color: #000;
+      margin-top: 20px;
+      border-radius: 8px;
+    }
+    
+    .log-container {
+      background-color: #f8f8f8;
+      border: 1px solid #ddd;
+      padding: 10px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 14px;
+      margin-top: 20px;
+      border-radius: 8px;
+    }
+    
+    .log-entry {
+      margin: 4px 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    
+    .error {
+      color: #d9534f;
+    }
+    
+    .success {
+      color: #5cb85c;
+    }
+    
+    .info {
+      color: #5bc0de;
+    }
+  </style>
+</head>
+<body>
+  <h1>HeyGen Avatar Test</h1>
+  <div class="container">
+    <div class="control-panel">
+      <label for="apiKey">HeyGen API Key:</label>
+      <input id="apiKey" class="api-key-input" type="password" placeholder="Enter your HeyGen API key" value="OWQzOWE0Y2ZlMjcxNDA3ZjgyMzhhM2Q2NWYwMzY1NTQtMTc0MDYyODQ0OQ==">
+      
+      <div class="button-row">
+        <button id="startBtn" onclick="createSession()">Start Session</button>
+        <button id="closeBtn" onclick="closeSession()" disabled>Close Session</button>
+      </div>
+      
+      <div class="text-input">
+        <input id="taskInput" type="text" placeholder="Enter text for the avatar to say">
+        <button id="talkBtn" onclick="sendText()" disabled>Make Avatar Talk</button>
+      </div>
+    </div>
+    
+    <video id="avatarVideo" autoplay></video>
+    
+    <div class="log-container" id="logContainer">
+      <div class="log-entry info">System ready. Enter your API key and click "Start Session".</div>
+    </div>
+  </div>
+
+  <script>
+    // Global variables
+    let sessionInfo = null;
+    let room = null;
+    let mediaStream = null;
+
+    // DOM elements
+    const apiKeyInput = document.getElementById('apiKey');
+    const startBtn = document.getElementById('startBtn');
+    const closeBtn = document.getElementById('closeBtn');
+    const talkBtn = document.getElementById('talkBtn');
+    const taskInput = document.getElementById('taskInput');
+    const mediaElement = document.getElementById('avatarVideo');
+    const logContainer = document.getElementById('logContainer');
+
+    // Log functions
+    function log(message, type = 'info') {
+      const logEntry = document.createElement('div');
+      logEntry.className = `log-entry ${type}`;
+      logEntry.textContent = message;
+      logContainer.appendChild(logEntry);
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+
+    // Create and start a session
+    async function createSession() {
+      try {
+        startBtn.disabled = true;
+        log('Creating new session...');
+        
+        const apiKey = apiKeyInput.value.trim();
+        if (!apiKey) {
+          log('API key is required', 'error');
+          startBtn.disabled = false;
+          return;
+        }
+        
+        // Create new session
+        let response = await fetch('https://api.heygen.com/v1/streaming.new', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            version: 'v2',
+            avatar_id: 'avatar_ad_4b7562234b2fc9' // Default avatar, can be replaced with your own
+          })
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          log(`Failed to create session: ${response.status} - ${errorText}`, 'error');
+          startBtn.disabled = false;
+          return;
+        }
+        
+        sessionInfo = await response.json();
+        log(`Session created with ID: ${sessionInfo.session_id}`, 'success');
+        
+        // Start streaming
+        log('Starting streaming...');
+        response = await fetch('https://api.heygen.com/v1/streaming.start', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            session_id: sessionInfo.session_id
+          })
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          log(`Failed to start streaming: ${response.status} - ${errorText}`, 'error');
+          startBtn.disabled = false;
+          return;
+        }
+        
+        log('Streaming started successfully', 'success');
+        
+        // Connect to LiveKit room
+        log('Connecting to LiveKit room...');
+        room = new LivekitClient.Room();
+        mediaStream = new MediaStream();
+        
+        // Set up room event handlers
+        room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
+          log(`Track subscribed: ${track.kind}`, 'info');
+          if (track.kind === 'video' || track.kind === 'audio') {
+            mediaStream.addTrack(track.mediaStreamTrack);
+            mediaElement.srcObject = mediaStream;
+          }
+        });
+        
+        room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+          log(`Track unsubscribed: ${track.kind}`, 'info');
+        });
+        
+        room.on(LivekitClient.RoomEvent.ConnectionStateChanged, (state) => {
+          log(`Connection state changed: ${state}`, 'info');
+        });
+        
+        // Connect to the room
+        await room.connect(sessionInfo.url, sessionInfo.access_token);
+        log('Connected to LiveKit room successfully', 'success');
+        
+        // Enable UI controls
+        closeBtn.disabled = false;
+        talkBtn.disabled = false;
+        
+        // Send an initial message
+        sendText('Hello, I am Donald Trump. Let\'s talk about Ukraine aid negotiations.');
+        
+      } catch (error) {
+        log(`Error: ${error.message}`, 'error');
+        console.error('Error creating session:', error);
+        startBtn.disabled = false;
+      }
+    }
+
+    // Send text to the avatar
+    async function sendText(text = null) {
+      if (!sessionInfo) {
+        log('No active session', 'error');
+        return;
+      }
+      
+      const inputText = text || taskInput.value.trim();
+      if (!inputText) {
+        log('Text is required', 'error');
+        return;
+      }
+      
+      try {
+        talkBtn.disabled = true;
+        log(`Sending text: "${inputText}"`);
+        
+        const response = await fetch('https://api.heygen.com/v1/streaming.task', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKeyInput.value.trim()}`
+          },
+          body: JSON.stringify({
+            session_id: sessionInfo.session_id,
+            text: inputText,
+            task_type: 'repeat'  // Use 'talk' for LLM responses
+          })
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          log(`Failed to send text: ${response.status} - ${errorText}`, 'error');
+          talkBtn.disabled = false;
+          return;
+        }
+        
+        const result = await response.json();
+        log('Text sent successfully', 'success');
+        
+        // Clear the input field
+        taskInput.value = '';
+        
+        // Re-enable talk button after a delay
+        setTimeout(() => {
+          talkBtn.disabled = false;
+        }, 1000);
+        
+      } catch (error) {
+        log(`Error: ${error.message}`, 'error');
+        console.error('Error sending text:', error);
+        talkBtn.disabled = false;
+      }
+    }
+
+    // Close the session
+    async function closeSession() {
+      if (!sessionInfo) {
+        log('No active session', 'info');
+        return;
+      }
+      
+      try {
+        closeBtn.disabled = true;
+        talkBtn.disabled = true;
+        log('Closing session...');
+        
+        const response = await fetch('https://api.heygen.com/v1/streaming.stop', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKeyInput.value.trim()}`
+          },
+          body: JSON.stringify({
+            session_id: sessionInfo.session_id
+          })
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          log(`Failed to close session: ${response.status} - ${errorText}`, 'error');
+          closeBtn.disabled = false;
+          talkBtn.disabled = false;
+          return;
+        }
+        
+        log('Session closed successfully', 'success');
+        
+        // Disconnect from LiveKit room
+        if (room) {
+          room.disconnect();
+          room = null;
+        }
+        
+        // Clear video element
+        mediaElement.srcObject = null;
+        mediaStream = null;
+        
+        // Reset session state
+        sessionInfo = null;
+        
+        // Reset UI controls
+        startBtn.disabled = false;
+        closeBtn.disabled = true;
+        talkBtn.disabled = true;
+        
+      } catch (error) {
+        log(`Error: ${error.message}`, 'error');
+        console.error('Error closing session:', error);
+        closeBtn.disabled = false;
+        talkBtn.disabled = false;
+      }
+    }
+
+    // Handle enter key in task input
+    taskInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && !talkBtn.disabled) {
+        sendText();
+      }
+    });
+  </script>
+</body>
+</html>

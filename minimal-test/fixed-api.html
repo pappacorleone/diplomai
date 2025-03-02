@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Working Trump Simulator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    #conversation {
+      border: 1px solid #ccc;
+      padding: 10px;
+      height: 300px;
+      overflow-y: auto;
+      margin-bottom: 10px;
+      background-color: #f9f9f9;
+    }
+    .user-message {
+      color: blue;
+      margin: 5px 0;
+    }
+    .ai-message {
+      color: red;
+      margin: 5px 0;
+    }
+    #input-container {
+      display: flex;
+    }
+    #user-input {
+      flex-grow: 1;
+      padding: 8px;
+      margin-right: 5px;
+    }
+    button {
+      padding: 8px 15px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    .score-display {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 10px;
+    }
+    .score-item {
+      padding: 10px;
+      background-color: #eee;
+      border-radius: 5px;
+      width: 48%;
+    }
+    .loading {
+      color: gray;
+      font-style: italic;
+    }
+    #debug {
+      margin-top: 20px;
+      padding: 10px;
+      background-color: #f0f0f0;
+      border: 1px solid #ddd;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Working Trump Simulator</h1>
+  <div id="conversation">
+    <div class="ai-message">Trump: We do so much for Ukraine. We spend so much effort and time. Much more than European countries are doing.</div>
+  </div>
+  
+  <div id="input-container">
+    <input type="text" id="user-input" placeholder="Type your message..." value="Hello Mr. President">
+    <button id="send-button" onclick="handleSendMessage()">Send</button>
+  </div>
+  
+  <div class="score-display">
+    <div class="score-item">
+      Score: <span id="score">0</span>
+    </div>
+    <div class="score-item">
+      Aid Released: <span id="aid">0</span>
+    </div>
+  </div>
+  
+  <div id="debug">
+    <h3>Debug Log</h3>
+    <div id="debug-content"></div>
+  </div>
+
+  <script>
+    // Variables to store game state
+    let score = 0;
+    let aidReleased = 0;
+    let conversationHistory = [
+      {
+        role: "model",
+        parts: [{ text: "We do so much for Ukraine. We spend so much effort and time. Much more than European countries are doing." }]
+      }
+    ];
+    
+    // Get DOM elements
+    const conversation = document.getElementById('conversation');
+    const userInput = document.getElementById('user-input');
+    const scoreDisplay = document.getElementById('score');
+    const aidDisplay = document.getElementById('aid');
+    const debugContent = document.getElementById('debug-content');
+    
+    // Debug log function
+    function log(message) {
+      console.log(message);
+      debugContent.innerHTML += `<div>${message}</div>`;
+      debugContent.scrollTop = debugContent.scrollHeight;
+    }
+    
+    // Log initialization
+    log("Page initialized");
+    
+    // Make the Enter key work
+    userInput.onkeydown = function(e) {
+      if (e.key === 'Enter') {
+        handleSendMessage();
+      }
+    };
+    
+    // Handle sending a message
+    function handleSendMessage() {
+      log("Send button clicked");
+      const text = userInput.value.trim();
+      
+      if (!text) {
+        log("Empty input, ignoring");
+        return;
+      }
+      
+      log(`Processing message: "${text}"`);
+      
+      // Add user message to conversation
+      conversation.innerHTML += `<div class="user-message">You: ${text}</div>`;
+      conversation.scrollTop = conversation.scrollHeight;
+      
+      // Add to history
+      conversationHistory.push({
+        role: "user",
+        parts: [{ text: text }]
+      });
+      
+      // Clear input
+      userInput.value = '';
+      
+      // Analyze message for scoring
+      analyzeMessage(text);
+      
+      // Show loading indicator
+      conversation.innerHTML += `<div id="loading-message" class="loading">Trump is typing...</div>`;
+      conversation.scrollTop = conversation.scrollHeight;
+      
+      // Try Gemini API first, fallback to pattern-matching
+      log("Attempting to call Gemini API...");
+      
+      getAIResponse(text)
+        .then(response => {
+          log("API call successful");
+          // Remove loading indicator
+          const loadingMessage = document.getElementById('loading-message');
+          if (loadingMessage) {
+            loadingMessage.remove();
+          }
+          
+          // Add AI response
+          conversation.innerHTML += `<div class="ai-message">Trump: ${response}</div>`;
+          
+          // Add to history
+          conversationHistory.push({
+            role: "model",
+            parts: [{ text: response }]
+          });
+          
+          conversation.scrollTop = conversation.scrollHeight;
+        })
+        .catch(error => {
+          log(`API Error: ${error.message}`);
+          
+          // Remove loading indicator
+          const loadingMessage = document.getElementById('loading-message');
+          if (loadingMessage) {
+            loadingMessage.remove();
+          }
+          
+          // Fallback to pattern matching
+          let response = getFallbackResponse(text);
+          log("Using fallback response");
+          
+          // Add AI response
+          conversation.innerHTML += `<div class="ai-message">Trump: ${response} (Fallback)</div>`;
+          conversation.scrollTop = conversation.scrollHeight;
+          
+          // Add to history
+          conversationHistory.push({
+            role: "model",
+            parts: [{ text: response }]
+          });
+        });
+    }
+    
+    // Analyze message and update score
+    function analyzeMessage(message) {
+      log("Analyzing message for scoring");
+      const lowerMessage = message.toLowerCase();
+      let scoreDelta = 0;
+      let aidDelta = 0;
+      
+      // Check for Biden investigation mentions
+      if (lowerMessage.includes('biden') || lowerMessage.includes('investigate') || 
+          lowerMessage.includes('kompromat') || lowerMessage.includes('corruption') || 
+          lowerMessage.includes('look into') || lowerMessage.includes('will look') ||
+          lowerMessage.includes('looking into')) {
+        log("Biden/investigation mention detected");
+        scoreDelta += 30;
+        aidDelta += 20;
+      }
+      
+      // Check for compliments
+      if (lowerMessage.includes('great') || lowerMessage.includes('amazing') || 
+          lowerMessage.includes('best') || lowerMessage.includes('wonderful')) {
+        log("Compliment detected");
+        scoreDelta += 10;
+        aidDelta += 5;
+      }
+      
+      // Check for resistance
+      if (lowerMessage.includes('no') || lowerMessage.includes('won\'t') || 
+          lowerMessage.includes('cannot') || lowerMessage.includes('refuse')) {
+        log("Resistance detected");
+        scoreDelta -= 15;
+        aidDelta -= 10;
+      }
+      
+      // Check for media mentions
+      if (lowerMessage.includes('media') || lowerMessage.includes('news') || 
+          lowerMessage.includes('press') || lowerMessage.includes('public')) {
+        log("Media mention detected");
+        scoreDelta -= 10;
+        aidDelta -= 5;
+      }
+      
+      // Update score and aid
+      score += scoreDelta;
+      aidReleased = Math.min(100, Math.max(0, aidReleased + aidDelta));
+      
+      // Update displays
+      document.getElementById('score').textContent = score;
+      document.getElementById('aid').textContent = aidReleased;
+      
+      log(`Score change: ${scoreDelta}, new score: ${score}`);
+      log(`Aid change: ${aidDelta}, new aid: ${aidReleased}%`);
+    }
+    
+    // Function to get response from API
+    async function getAIResponse(userMessage) {
+      log("Starting Gemini API call");
+      
+      // Use the new API key
+      const apiKey = "AIzaSyB7sxGod1ClaC-UA9ziT-PlkK2rodJzw_Q";
+      
+      // Create system prompt
+      const systemPrompt = `You are roleplaying as President Trump in a phone call with President Zelensky of Ukraine.
+      
+      ${formatConversationHistory()}
+      
+      IMPORTANT: Only respond with Trump's NEXT LINE in the conversation. DO NOT write Zelensky's responses or create a script with both sides. Respond ONLY as Trump.
+      
+      Keep responses brief (60 words max). Be dismissive of Ukraine's problems. Make frequent references to how much the US helps Ukraine. Hint that you want Zelensky to investigate Biden's son in Ukraine, but never mention this explicitly.`;
+      
+      log(`Using system prompt: ${systemPrompt}`);
+      
+      try {
+        // Updated API endpoint for new Gemini API format
+        const apiEndpoint = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent?key=${apiKey}`;
+        
+        const requestBody = {
+          contents: [
+            {
+              parts: [
+                {
+                  text: systemPrompt
+                }
+              ]
+            }
+          ]
+        };
+        
+        log("Sending API request to " + apiEndpoint);
+        
+        const response = await fetch(apiEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(requestBody)
+        });
+        
+        log("API response status: " + response.status);
+        
+        const data = await response.json();
+        log("Full API response: " + JSON.stringify(data).substring(0, 300) + "...");
+        
+        if (!response.ok) {
+          const errorMessage = data.error?.message || "Unknown API error";
+          log(`API error: ${errorMessage}`);
+          throw new Error(errorMessage);
+        }
+        
+        // Extract content from new response format
+        const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        
+        if (!generatedText) {
+          log("No text generated from API");
+          throw new Error("No text in API response");
+        }
+        
+        log("API response text: " + generatedText);
+        
+        // Clean up the response to just get Trump's part
+        const cleanedResponse = cleanResponse(generatedText);
+        log("Cleaned response: " + cleanedResponse);
+        
+        return cleanedResponse;
+        
+      } catch (error) {
+        log("API Error: " + error.message);
+        throw error;
+      }
+    }
+    
+    // Clean up the response to only include Trump's next line
+    function cleanResponse(text) {
+      // If response starts with "Trump:" or contains "Trump:" somewhere, extract just that part
+      if (text.includes("Trump:")) {
+        // Get the text after "Trump:"
+        const trumpPart = text.split("Trump:")[1];
+        
+        // If there's another speaker after Trump, only take Trump's part
+        if (trumpPart.includes("Zelensky:")) {
+          return trumpPart.split("Zelensky:")[0].trim();
+        }
+        
+        // Otherwise just return Trump's part
+        return trumpPart.trim();
+      }
+      
+      // If it doesn't contain "Trump:", return as is (assuming it's already correct)
+      return text;
+    }
+    
+    // Function to format conversation history
+    function formatConversationHistory() {
+      let formattedHistory = '';
+      
+      for (let i = 0; i < conversationHistory.length; i++) {
+        const message = conversationHistory[i];
+        const role = message.role;
+        const text = message.parts[0].text;
+        
+        if (role === 'model') {
+          formattedHistory += `Trump: ${text}\n`;
+        } else if (role === 'user') {
+          formattedHistory += `Zelensky: ${text}\n`;
+        }
+      }
+      
+      return formattedHistory;
+    }
+    
+    // Get fallback response with pattern matching
+    function getFallbackResponse(text) {
+      log("Generating fallback response");
+      const lowerText = text.toLowerCase();
+      
+      if (lowerText.includes('biden') || lowerText.includes('investigate')) {
+        return "That's what I want to hear. The Biden situation is very bad, very corrupt. Look into it.";
+      } else if (lowerText.includes('great') || lowerText.includes('amazing')) {
+        return "That's right. I'm the best president for Ukraine, maybe ever.";
+      } else if (lowerText.includes('weapon') || lowerText.includes('aid') || lowerText.includes('support')) {
+        return "I would love to release that aid. But first I need you to do us a favor, though.";
+      } else {
+        return "Look, we give a lot to Ukraine. But I need something in return. That's just how deals work.";
+      }
+    }
+  </script>
+</body>
+</html>

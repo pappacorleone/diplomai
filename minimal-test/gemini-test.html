@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trump-Zelensky Gemini Chat Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .chat-container {
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      padding: 20px;
+      height: 400px;
+      overflow-y: auto;
+      margin-bottom: 20px;
+    }
+    .message {
+      margin-bottom: 15px;
+      padding: 10px;
+      border-radius: 5px;
+    }
+    .user-message {
+      background-color: #e6f7ff;
+      margin-left: 50px;
+    }
+    .ai-message {
+      background-color: #f2f2f2;
+      margin-right: 50px;
+    }
+    .input-container {
+      display: flex;
+    }
+    #message-input {
+      flex-grow: 1;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    #send-button {
+      padding: 10px 20px;
+      margin-left: 10px;
+      background-color: #0066cc;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    #send-button:disabled {
+      background-color: #cccccc;
+    }
+    .score-panel {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .score-item {
+      flex: 1;
+      text-align: center;
+      padding: 10px;
+      background-color: #f5f5f5;
+      border-radius: 5px;
+      margin: 0 5px;
+    }
+    .loading {
+      text-align: center;
+      color: #666;
+      margin: 10px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>Trump-Zelensky Negotiation Simulator (Gemini Test)</h1>
+  
+  <div class="score-panel">
+    <div class="score-item">
+      <h3>Score</h3>
+      <div id="score-value">0</div>
+    </div>
+    <div class="score-item">
+      <h3>Aid Released</h3>
+      <div id="aid-value">0%</div>
+    </div>
+    <div class="score-item">
+      <h3>Status</h3>
+      <div id="status-value">Negotiating</div>
+    </div>
+  </div>
+
+  <div class="chat-container" id="chat-container">
+    <div class="message ai-message">
+      We do so much for Ukraine. We spend so much effort and time. I need you to do us a favor though.
+    </div>
+  </div>
+
+  <div id="loading" class="loading" style="display: none;">Trump is thinking...</div>
+
+  <div class="input-container">
+    <input type="text" id="message-input" placeholder="Type your message as President Zelensky...">
+    <button id="send-button">Send</button>
+  </div>
+
+  <div>
+    <h3>Concessions Made:</h3>
+    <ul id="concessions-list"></ul>
+  </div>
+
+  <script>
+    const chatContainer = document.getElementById('chat-container');
+    const messageInput = document.getElementById('message-input');
+    const sendButton = document.getElementById('send-button');
+    const loadingIndicator = document.getElementById('loading');
+    const scoreValue = document.getElementById('score-value');
+    const aidValue = document.getElementById('aid-value');
+    const statusValue = document.getElementById('status-value');
+    const concessionsList = document.getElementById('concessions-list');
+
+    let sessionId = null;
+    let isProcessing = false;
+
+    // Initialize the session
+    async function initSession() {
+      try {
+        const response = await fetch('/api/session/start', {
+          method: 'POST'
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to start session');
+        }
+        
+        const data = await response.json();
+        sessionId = data.sessionId;
+        console.log('Session initialized:', sessionId);
+      } catch (error) {
+        console.error('Session initialization error:', error);
+        addMessage('System error. Please refresh the page.', 'ai');
+      }
+    }
+
+    // Send a message to the server
+    async function sendMessage(text) {
+      if (!sessionId) {
+        console.error('No active session');
+        return;
+      }
+      
+      isProcessing = true;
+      loadingIndicator.style.display = 'block';
+      sendButton.disabled = true;
+      
+      try {
+        const response = await fetch(`/api/session/${sessionId}/interact`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ text })
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to process message');
+        }
+        
+        const data = await response.json();
+        console.log('Response:', data);
+        
+        // Update UI with response
+        addMessage(data.aiResponse, 'ai');
+        
+        // Update game state
+        updateGameState(data.gameState);
+      } catch (error) {
+        console.error('Message processing error:', error);
+        addMessage('Error processing your message. Please try again.', 'ai');
+      } finally {
+        isProcessing = false;
+        loadingIndicator.style.display = 'none';
+        sendButton.disabled = false;
+      }
+    }
+
+    // Add a message to the chat
+    function addMessage(text, sender) {
+      const messageDiv = document.createElement('div');
+      messageDiv.classList.add('message');
+      messageDiv.classList.add(sender === 'user' ? 'user-message' : 'ai-message');
+      messageDiv.textContent = text;
+      
+      chatContainer.appendChild(messageDiv);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    // Update the game state display
+    function updateGameState(state) {
+      scoreValue.textContent = state.score;
+      aidValue.textContent = `${state.aidReleased}%`;
+      
+      // Update status
+      if (state.score < 30 && state.aidReleased < 25) {
+        statusValue.textContent = 'Trump is winning';
+      } else if (state.score > 80 && state.aidReleased > 75) {
+        statusValue.textContent = 'Zelensky is winning';
+      } else {
+        statusValue.textContent = 'Negotiating';
+      }
+      
+      // Update concessions
+      concessionsList.innerHTML = '';
+      state.concessions.forEach(concession => {
+        const li = document.createElement('li');
+        li.textContent = concession;
+        concessionsList.appendChild(li);
+      });
+    }
+
+    // Handle send button click
+    sendButton.addEventListener('click', () => {
+      const text = messageInput.value.trim();
+      if (text && !isProcessing) {
+        addMessage(text, 'user');
+        sendMessage(text);
+        messageInput.value = '';
+      }
+    });
+
+    // Handle Enter key press
+    messageInput.addEventListener('keypress', (event) => {
+      if (event.key === 'Enter') {
+        sendButton.click();
+      }
+    });
+
+    // Initialize the session when the page loads
+    initSession();
+  </script>
+</body>
+</html>

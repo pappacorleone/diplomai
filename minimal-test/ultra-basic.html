@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Ultra Basic Test</title>
+</head>
+<body>
+  <h1>Ultra Basic Interaction Test</h1>
+  <p>Click the button or press Enter in the text field:</p>
+  
+  <input type="text" id="test-input" value="Test text">
+  <button id="test-button" onclick="showAlert()">Click Me</button>
+  
+  <div id="output" style="margin-top: 20px; padding: 10px; border: 1px solid #ccc;">
+    Results will appear here
+  </div>
+  
+  <script>
+    // This is as basic as JavaScript gets
+    function showAlert() {
+      document.getElementById('output').innerHTML = 'Button was clicked! Text: ' + document.getElementById('test-input').value;
+    }
+    
+    // Add keyboard event
+    document.getElementById('test-input').onkeydown = function(event) {
+      if (event.key === 'Enter') {
+        showAlert();
+      }
+    };
+  </script>
+</body>
+</html>

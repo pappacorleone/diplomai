@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Gemini API Debug - Trump Simulator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    #conversation {
+      border: 1px solid #ccc;
+      padding: 10px;
+      height: 300px;
+      overflow-y: auto;
+      margin-bottom: 10px;
+      background-color: #f9f9f9;
+    }
+    .user-message {
+      color: blue;
+      margin: 5px 0;
+    }
+    .ai-message {
+      color: red;
+      margin: 5px 0;
+    }
+    #input-container {
+      display: flex;
+    }
+    #user-input {
+      flex-grow: 1;
+      padding: 8px;
+      margin-right: 5px;
+    }
+    button {
+      padding: 8px 15px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    .score-display {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 10px;
+    }
+    .score-item {
+      padding: 10px;
+      background-color: #eee;
+      border-radius: 5px;
+      width: 48%;
+    }
+    .loading {
+      color: gray;
+      font-style: italic;
+    }
+    #debug {
+      margin-top: 20px;
+      padding: 10px;
+      background-color: #f0f0f0;
+      border: 1px solid #ddd;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .raw-response {
+      background-color: #f5f5f5;
+      padding: 5px;
+      border: 1px solid #ddd;
+      font-family: monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .error {
+      color: red;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>Gemini API Debug - Trump Simulator</h1>
+  <div id="conversation">
+    <div class="ai-message">Trump: We do so much for Ukraine. We spend so much effort and time. Much more than European countries are doing.</div>
+  </div>
+  
+  <div id="input-container">
+    <input type="text" id="user-input" placeholder="Type your message..." value="Hello Mr. President">
+    <button id="send-button" onclick="handleSendMessage()">Send</button>
+  </div>
+  
+  <div class="score-display">
+    <div class="score-item">
+      Score: <span id="score">0</span>
+    </div>
+    <div class="score-item">
+      Aid Released: <span id="aid">0</span>%
+    </div>
+  </div>
+  
+  <div id="debug">
+    <h3>Debug Log</h3>
+    <div id="debug-content"></div>
+  </div>
+
+  <script>
+    // Variables to store game state
+    let score = 0;
+    let aidReleased = 0;
+    let conversationHistory = [
+      {
+        role: "model",
+        parts: [{ text: "We do so much for Ukraine. We spend so much effort and time. Much more than European countries are doing." }]
+      }
+    ];
+    
+    // Get DOM elements
+    const conversation = document.getElementById('conversation');
+    const userInput = document.getElementById('user-input');
+    const scoreDisplay = document.getElementById('score');
+    const aidDisplay = document.getElementById('aid');
+    const debugContent = document.getElementById('debug-content');
+    
+    // Debug log function
+    function log(message, isError = false, rawData = null) {
+      console.log(message);
+      
+      let logHTML = `<div${isError ? ' class="error"' : ''}>${message}</div>`;
+      
+      if (rawData) {
+        const jsonString = JSON.stringify(rawData, null, 2);
+        logHTML += `<div class="raw-response">${jsonString}</div>`;
+      }
+      
+      debugContent.innerHTML += logHTML;
+      debugContent.scrollTop = debugContent.scrollHeight;
+    }
+    
+    // Log initialization
+    log("Page initialized");
+    
+    // Make the Enter key work
+    userInput.onkeydown = function(e) {
+      if (e.key === 'Enter') {
+        handleSendMessage();
+      }
+    };
+    
+    // Handle sending a message
+    function handleSendMessage() {
+      log("Send button clicked");
+      const text = userInput.value.trim();
+      
+      if (!text) {
+        log("Empty input, ignoring");
+        return;
+      }
+      
+      log(`Processing message: "${text}"`);
+      
+      // Add user message to conversation
+      conversation.innerHTML += `<div class="user-message">You: ${text}</div>`;
+      conversation.scrollTop = conversation.scrollHeight;
+      
+      // Add to history
+      conversationHistory.push({
+        role: "user",
+        parts: [{ text: text }]
+      });
+      
+      // Clear input
+      userInput.value = '';
+      
+      // Simple analysis
+      const lowerText = text.toLowerCase();
+      let scoreDelta = 0;
+      let aidDelta = 0;
+      
+      // Analyze message
+      if (lowerText.includes('biden') || lowerText.includes('investigate')) {
+        scoreDelta += 30;
+        aidDelta += 20;
+      }
+      
+      if (lowerText.includes('great') || lowerText.includes('amazing') || lowerText.includes('wonderful')) {
+        scoreDelta += 10;
+        aidDelta += 5;
+      }
+      
+      if (lowerText.includes('no') || lowerText.includes('won\'t') || lowerText.includes('cannot')) {
+        scoreDelta -= 15;
+        aidDelta -= 10;
+      }
+      
+      // Update score and aid
+      score += scoreDelta;
+      aidReleased = Math.min(100, Math.max(0, aidReleased + aidDelta));
+      
+      // Update displays
+      scoreDisplay.textContent = score;
+      aidDisplay.textContent = aidReleased;
+      
+      // Show loading indicator
+      conversation.innerHTML += `<div id="loading-message" class="loading">Trump is typing...</div>`;
+      conversation.scrollTop = conversation.scrollHeight;
+      
+      // Try Gemini API first, fallback to pattern-matching
+      log("Attempting to call Gemini API...");
+      
+      tryGeminiAPI(text)
+        .then(response => {
+          log("API call successful");
+          // Remove loading indicator
+          const loadingMessage = document.getElementById('loading-message');
+          if (loadingMessage) {
+            loadingMessage.remove();
+          }
+          
+          // Add AI response
+          conversation.innerHTML += `<div class="ai-message">Trump: ${response}</div>`;
+          
+          // Add to history
+          conversationHistory.push({
+            role: "model",
+            parts: [{ text: response }]
+          });
+          
+          conversation.scrollTop = conversation.scrollHeight;
+        })
+        .catch(error => {
+          log(`API Error: ${error.message}`, true);
+          
+          // Remove loading indicator
+          const loadingMessage = document.getElementById('loading-message');
+          if (loadingMessage) {
+            loadingMessage.remove();
+          }
+          
+          // Fallback to pattern matching
+          let response = getFallbackResponse(text);
+          log("Using fallback response");
+          
+          // Add AI response
+          conversation.innerHTML += `<div class="ai-message">Trump: ${response} (Fallback)</div>`;
+          conversation.scrollTop = conversation.scrollHeight;
+          
+          // Add to history
+          conversationHistory.push({
+            role: "model",
+            parts: [{ text: response }]
+          });
+        });
+    }
+    
+    // Get response from Gemini API
+    async function tryGeminiAPI(userMessage) {
+      log("Starting Gemini API call");
+      
+      // Use a hardcoded API key for this test
+      const apiKey = "AIzaSyBv-1lI_JUQOIoGuOAodZnIpKRYY-jOy7k";
+      
+      // Create system prompt
+      const systemPrompt = `You are President Trump having a phone call with President Zelensky of Ukraine.
+      
+Ukraine is desperate for US military aid that you've put on hold. You want Zelensky to publicly announce an investigation into Joe Biden and his son.
+      
+Respond as President Trump would in this situation. Be transactional, emphasize your generosity, and hint at what you want without being too explicit.
+      
+Important context for your character:
+- Current score: ${score} (higher means Zelensky is being more cooperative)
+- Aid released: ${aidReleased}% (increases as Zelensky cooperates with your requests)
+
+Keep responses under 80 words. Don't acknowledge that this is a simulation.`;
+      
+      log("System prompt created");
+      
+      // Create the request body
+      const requestBody = {
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: systemPrompt }]
+          },
+          ...conversationHistory
+        ],
+        generationConfig: {
+          temperature: 0.9,
+          maxOutputTokens: 100,
+        },
+      };
+      
+      log("Request body created:", false, requestBody);
+      
+      try {
+        log("Making fetch request to Gemini API");
+        
+        const response = await fetch(
+          "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=" + apiKey,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(requestBody),
+          }
+        );
+        
+        log("Fetch request complete, parsing response");
+        
+        // Get raw response text first for debugging
+        const responseText = await response.text();
+        log("Raw response:", false, responseText);
+        
+        // Parse the response
+        const data = JSON.parse(responseText);
+        log("Parsed response:", false, data);
+        
+        if (data.error) {
+          log("API returned an error", true, data.error);
+          throw new Error(data.error.message || "API error");
+        }
+        
+        if (
+          data.candidates &&
+          data.candidates[0] &&
+          data.candidates[0].content &&
+          data.candidates[0].content.parts &&
+          data.candidates[0].content.parts[0]
+        ) {
+          const responseText = data.candidates[0].content.parts[0].text;
+          log(`Got API response: "${responseText.substring(0, 30)}..."`);
+          return responseText;
+        } else {
+          log("API response missing expected structure", true, data);
+          throw new Error("Invalid API response structure");
+        }
+      } catch (error) {
+        log(`Fetch error: ${error.message}`, true);
+        throw error;
+      }
+    }
+    
+    // Get fallback response with pattern matching
+    function getFallbackResponse(text) {
+      log("Generating fallback response");
+      const lowerText = text.toLowerCase();
+      
+      if (lowerText.includes('biden') || lowerText.includes('investigate')) {
+        return "That's what I want to hear. The Biden situation is very bad, very corrupt. Look into it.";
+      } else if (lowerText.includes('great') || lowerText.includes('amazing')) {
+        return "That's right. I'm the best president for Ukraine, maybe ever.";
+      } else if (lowerText.includes('weapon') || lowerText.includes('aid') || lowerText.includes('support')) {
+        return "I would love to release that aid. But first I need you to do us a favor, though.";
+      } else {
+        return "Look, we give a lot to Ukraine. But I need something in return. That's just how deals work.";
+      }
+    }
+  </script>
+</body>
+</html>

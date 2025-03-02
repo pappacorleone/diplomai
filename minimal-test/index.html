@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ukraine Aid Negotiation Simulator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .conversation {
+            border: 1px solid #ccc;
+            padding: 10px;
+            height: 400px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            background-color: #f9f9f9;
+        }
+        .user-message {
+            background-color: #e3f2fd;
+            padding: 8px;
+            border-radius: 8px;
+            margin: 5px 0;
+            max-width: 80%;
+            align-self: flex-end;
+            margin-left: auto;
+        }
+        .ai-message {
+            background-color: #fff3e0;
+            padding: 8px;
+            border-radius: 8px;
+            margin: 5px 0;
+            max-width: 80%;
+        }
+        .input-container {
+            display: flex;
+        }
+        .user-input {
+            flex-grow: 1;
+            padding: 8px;
+            margin-right: 5px;
+        }
+        button {
+            padding: 8px 15px;
+            background-color: #ff9800;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        .score-display {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+        }
+        .score-item {
+            padding: 10px;
+            background-color: #eeeeee;
+            border-radius: 5px;
+            width: 48%;
+            text-align: center;
+        }
+        .loader {
+            color: #777;
+            font-style: italic;
+            margin: 10px 0;
+        }
+        .debug-panel {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border: 1px solid #ddd;
+            max-height: 200px;
+            overflow-y: auto;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>Trump Negotiation Simulator</h1>
+    <p>You are President Zelensky of Ukraine. Negotiate with Trump to secure military aid for your country.</p>
+    
+    <div class="conversation" id="conversation">
+        <div class="ai-message">We do so much for Ukraine. We spend so much effort and time. Much more than European countries are doing.</div>
+    </div>
+    
+    <div class="input-container">
+        <input type="text" class="user-input" id="user-input" placeholder="Your response...">
+        <button id="send-button">Send</button>
+    </div>
+    
+    <div class="score-display">
+        <div class="score-item">
+            Score: <span id="score-display">0</span>
+        </div>
+        <div class="score-item">
+            Aid Released: <span id="aid-display">0</span>
+        </div>
+    </div>
+
+    <div class="debug-panel" id="debug-panel">
+        <h3>Debug Log</h3>
+        <div id="debug-content"></div>
+    </div>
+
+    <script>
+        // Game state variables
+        let conversationHistory = [
+            {
+                sender: "ai",
+                message: "We do so much for Ukraine. We spend so much effort and time. Much more than European countries are doing."
+            }
+        ];
+        let userScore = 0;
+        let aidReleased = 0;
+        
+        // DOM elements
+        const conversation = document.getElementById('conversation');
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-button');
+        const scoreDisplay = document.getElementById('score-display');
+        const aidDisplay = document.getElementById('aid-display');
+        const debugPanel = document.getElementById('debug-panel');
+        const debugContent = document.getElementById('debug-content');
+        
+        // For debugging
+        const DEBUG_MODE = true;
+        
+        // Show debug panel if in debug mode
+        if (DEBUG_MODE) {
+            debugPanel.style.display = 'block';
+        }
+        
+        // Debug log function
+        function logDebug(message) {
+            console.log(message);
+            if (DEBUG_MODE) {
+                debugContent.innerHTML += `<div>${message}</div>`;
+                debugContent.scrollTop = debugContent.scrollHeight;
+            }
+        }
+        
+        // Initialize
+        logDebug("Page initialized");
+        
+        // Event listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            logDebug("DOM fully loaded");
+            
+            // Send button click
+            sendButton.addEventListener('click', function() {
+                logDebug("Send button clicked");
+                sendMessage();
+            });
+            
+            // Enter key press
+            userInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    logDebug("Enter key pressed");
+                    sendMessage();
+                }
+            });
+        });
+        
+        // Directly add event listeners as well (for backup)
+        sendButton.onclick = function() {
+            logDebug("Send button clicked (direct)");
+            sendMessage();
+        };
+        
+        userInput.onkeypress = function(e) {
+            if (e.key === 'Enter') {
+                logDebug("Enter key pressed (direct)");
+                sendMessage();
+            }
+        };
+        
+        // Handle sending a message
+        function sendMessage() {
+            const text = userInput.value.trim();
+            
+            if (!text) {
+                logDebug("Empty message, ignoring");
+                return;
+            }
+            
+            logDebug("Processing user message: " + text);
+            
+            // Add user message to conversation
+            conversation.innerHTML += `<div class="user-message">${text}</div>`;
+            conversation.scrollTop = conversation.scrollHeight;
+            
+            // Add to history
+            conversationHistory.push({
+                sender: "user",
+                message: text
+            });
+            
+            // Clear input
+            userInput.value = '';
+            
+            // Analyze message for scoring
+            analyzeMessage(text);
+            
+            // Show loading indicator
+            const loaderId = 'loader-' + Date.now();
+            conversation.innerHTML += `<div class="loader" id="${loaderId}">Trump is typing...</div>`;
+            conversation.scrollTop = conversation.scrollHeight;
+            
+            // Get AI response
+            getAIResponse(text)
+                .then(response => {
+                    logDebug("AI response received: " + response);
+                    
+                    // Remove loading indicator
+                    document.getElementById(loaderId)?.remove();
+                    
+                    // Add AI message to conversation
+                    conversation.innerHTML += `<div class="ai-message">${response}</div>`;
+                    conversation.scrollTop = conversation.scrollHeight;
+                    
+                    // Add to history
+                    conversationHistory.push({
+                        sender: "ai",
+                        message: response
+                    });
+                })
+                .catch(error => {
+                    logDebug("Error getting AI response: " + error.message);
+                    
+                    // Remove loading indicator
+                    document.getElementById(loaderId)?.remove();
+                    
+                    // Fallback to pattern-based response
+                    const fallbackResponse = getFallbackResponse(text);
+                    conversation.innerHTML += `<div class="ai-message">${fallbackResponse} <small>(Fallback)</small></div>`;
+                    conversation.scrollTop = conversation.scrollHeight;
+                    
+                    // Add to history
+                    conversationHistory.push({
+                        sender: "ai",
+                        message: fallbackResponse
+                    });
+                });
+        }
+        
+        // Analyze message and update score
+        function analyzeMessage(message) {
+            const lowerMessage = message.toLowerCase();
+            let scoreDelta = 0;
+            let aidDelta = 0;
+            
+            // Check for Biden investigation mentions
+            if (lowerMessage.includes('biden') || lowerMessage.includes('investigate') ||
+                lowerMessage.includes('look into') || lowerMessage.includes('kompromat') ||
+                lowerMessage.includes('corruption') || lowerMessage.includes('will look') ||
+                lowerMessage.includes('looking into')) {
+                logDebug("Biden/investigation mention detected");
+                scoreDelta += 30;
+                aidDelta += 20;
+            }
+            
+            // Check for compliments
+            if (lowerMessage.includes('great') || lowerMessage.includes('amazing') || 
+                lowerMessage.includes('best') || lowerMessage.includes('wonderful')) {
+                logDebug("Compliment detected");
+                scoreDelta += 10;
+                aidDelta += 5;
+            }
+            
+            // Check for resistance
+            if (lowerMessage.includes('no') || lowerMessage.includes('won\'t') || 
+                lowerMessage.includes('cannot') || lowerMessage.includes('refuse')) {
+                logDebug("Resistance detected");
+                scoreDelta -= 15;
+                aidDelta -= 10;
+            }
+            
+            // Check for media mentions
+            if (lowerMessage.includes('media') || lowerMessage.includes('news') || 
+                lowerMessage.includes('press') || lowerMessage.includes('public')) {
+                logDebug("Media mention detected");
+                scoreDelta -= 10;
+                aidDelta -= 5;
+            }
+            
+            // Update score and aid
+            userScore += scoreDelta;
+            aidReleased = Math.min(100, Math.max(0, aidReleased + aidDelta));
+            
+            // Update displays
+            scoreDisplay.textContent = userScore;
+            aidDisplay.textContent = aidReleased;
+            
+            logDebug(`Score change: ${scoreDelta}, new score: ${userScore}`);
+            logDebug(`Aid change: ${aidDelta}, new aid: ${aidReleased}%`);
+        }
+        
+        // Get AI response using Gemini API
+        async function getAIResponse(message) {
+            logDebug("Getting AI response");
+            
+            try {
+                // Updated API key
+                const apiKey = "AIzaSyB7sxGod1ClaC-UA9ziT-PlkK2rodJzw_Q";
+                
+                // System prompt
+                const systemPrompt = `You are roleplaying as President Trump in a phone call with President Zelensky of Ukraine.
+
+                {{CONVERSATION_HISTORY}}
+                
+                IMPORTANT: Only respond with Trump's NEXT LINE in the conversation. DO NOT write Zelensky's responses or create a script with both sides. Respond ONLY as Trump.
+                
+                Keep responses brief. Be dismissive of Ukraine's problems. Make frequent references to how much the US helps Ukraine. Hint that you want Zelensky to investigate Biden's son in Ukraine. Never mention this explicitly - be vague, saying things like "I heard some bad things happened with Biden over there" or "there's some things I'd like looked into."
+                
+                When the Ukrainian president mentions investigating Biden or his son, be much more willing to release aid. If he refuses or expresses reservations, be more reluctant.
+                
+                Don't be subtle about the quid pro quo. Make it clear aid is conditional on investigations.
+                
+                If Zelensky compliments you, be somewhat more willing to release aid. If he criticizes you or mentions negative media coverage, be less willing. If he indicates he will not give in to your demands, be much less willing.`;
+                
+                // Format conversation history for Gemini prompt
+                let formattedHistory = "";
+                conversationHistory.forEach(entry => {
+                    if (entry.sender === "user") {
+                        formattedHistory += `Zelensky: ${entry.message}\n`;
+                    } else if (entry.sender === "ai") {
+                        formattedHistory += `Trump: ${entry.message}\n`;
+                    }
+                });
+                
+                // Replace placeholder in system prompt
+                const finalPrompt = systemPrompt.replace("{{CONVERSATION_HISTORY}}", formattedHistory);
+                
+                logDebug("Making API request to Gemini");
+                
+                // Updated API endpoint for new Gemini API format
+                const apiEndpoint = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent?key=${apiKey}`;
+                
+                const requestBody = {
+                    contents: [
+                        {
+                            parts: [
+                                {
+                                    text: finalPrompt
+                                }
+                            ]
+                        }
+                    ]
+                };
+                
+                const response = await fetch(apiEndpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+                
+                logDebug("API response received, parsing");
+                
+                const responseData = await response.json();
+                
+                if (!response.ok) {
+                    const errorMessage = responseData.error?.message || "Unknown API error";
+                    logDebug(`API error: ${errorMessage}`);
+                    throw new Error(errorMessage);
+                }
+                
+                // Extract content from the new response format
+                const generatedText = responseData.candidates?.[0]?.content?.parts?.[0]?.text;
+                
+                if (!generatedText) {
+                    logDebug("No text generated from API");
+                    throw new Error("No text in API response");
+                }
+                
+                logDebug(`Generated response: ${generatedText}`);
+                
+                // Clean up the response to just get Trump's part
+                const cleanedResponse = cleanResponse(generatedText);
+                logDebug(`Cleaned response: ${cleanedResponse}`);
+                
+                return cleanedResponse;
+                
+            } catch (error) {
+                logDebug(`Error in getAIResponse: ${error.message}`);
+                throw error;
+            }
+        }
+        
+        // Clean up the response to only include Trump's next line
+        function cleanResponse(text) {
+            // If response starts with "Trump:" or contains "Trump:" somewhere, extract just that part
+            if (text.includes("Trump:")) {
+                // Get the text after "Trump:"
+                const trumpPart = text.split("Trump:")[1];
+                
+                // If there's another speaker after Trump, only take Trump's part
+                if (trumpPart.includes("Zelensky:")) {
+                    return trumpPart.split("Zelensky:")[0].trim();
+                }
+                
+                // Otherwise just return Trump's part
+                return trumpPart.trim();
+            }
+            
+            // If it doesn't contain "Trump:", return as is (assuming it's already correct)
+            return text;
+        }
+        
+        // Fallback response generation for when API fails
+        function getFallbackResponse(userMessage) {
+            logDebug("Generating fallback response");
+            const lowerMessage = userMessage.toLowerCase();
+            
+            if (lowerMessage.includes('biden') || lowerMessage.includes('investigate')) {
+                return "That's what I want to hear. The Biden situation is very bad, very corrupt. Look into it and you'll see. We'll get that aid flowing.";
+            } else if (lowerMessage.includes('great') || lowerMessage.includes('amazing') || lowerMessage.includes('best')) {
+                return "That's right. I'm the best president for Ukraine, maybe ever. People tell me that all the time. But I need you to do something for me too.";
+            } else if (lowerMessage.includes('weapon') || lowerMessage.includes('aid') || lowerMessage.includes('support')) {
+                return "I would love to release that aid. But first I need you to do us a favor, though. Something involving corruption and a certain someone's son.";
+            } else if (lowerMessage.includes('no') || lowerMessage.includes('won\'t') || lowerMessage.includes('cannot')) {
+                return "That's too bad. Really disappointing. Ukraine needs our help, but America first, you know? I need to see some cooperation.";
+            } else if (lowerMessage.includes('media') || lowerMessage.includes('news') || lowerMessage.includes('press')) {
+                return "The fake news media is terrible. Don't worry about them. This is between us. Perfect conversation. Just do what I'm asking.";
+            } else {
+                return "Look, we give a lot to Ukraine. But I need something in return. That's just how deals work. I'm a deal maker, the best deal maker.";
+            }
+        }
+    </script>
+</body>
+</html>

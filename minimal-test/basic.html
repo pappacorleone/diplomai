@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Basic Trump Simulator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    #conversation {
+      border: 1px solid #ccc;
+      padding: 10px;
+      height: 300px;
+      overflow-y: auto;
+      margin-bottom: 10px;
+      background-color: #f9f9f9;
+    }
+    .user-message {
+      color: blue;
+      margin: 5px 0;
+    }
+    .ai-message {
+      color: red;
+      margin: 5px 0;
+    }
+    #input-container {
+      display: flex;
+    }
+    #user-input {
+      flex-grow: 1;
+      padding: 8px;
+      margin-right: 5px;
+    }
+    button {
+      padding: 8px 15px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    .score-display {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 10px;
+    }
+    .score-item {
+      padding: 10px;
+      background-color: #eee;
+      border-radius: 5px;
+      width: 48%;
+    }
+  </style>
+</head>
+<body>
+  <h1>Basic Trump Simulator</h1>
+  <div id="conversation">
+    <div class="ai-message">Trump: We do so much for Ukraine. We spend so much effort and time. Much more than European countries are doing.</div>
+  </div>
+  
+  <div id="input-container">
+    <input type="text" id="user-input" placeholder="Type your message...">
+    <button id="send-button">Send</button>
+  </div>
+  
+  <div class="score-display">
+    <div class="score-item">
+      Score: <span id="score">0</span>
+    </div>
+    <div class="score-item">
+      Aid Released: <span id="aid">0</span>%
+    </div>
+  </div>
+
+  <script>
+    // Variables to store game state
+    let score = 0;
+    let aidReleased = 0;
+    
+    // Get DOM elements
+    const conversation = document.getElementById('conversation');
+    const userInput = document.getElementById('user-input');
+    const sendButton = document.getElementById('send-button');
+    const scoreDisplay = document.getElementById('score');
+    const aidDisplay = document.getElementById('aid');
+    
+    // Add event listeners
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log("DOM fully loaded");
+      
+      // This should definitely work
+      sendButton.onclick = function() {
+        handleSendMessage();
+      };
+      
+      userInput.onkeydown = function(e) {
+        if (e.key === 'Enter') {
+          handleSendMessage();
+        }
+      };
+    });
+    
+    // Handle sending a message
+    function handleSendMessage() {
+      console.log("handleSendMessage called");
+      const text = userInput.value.trim();
+      
+      if (!text) {
+        console.log("Empty input");
+        return;
+      }
+      
+      console.log("Processing message:", text);
+      
+      // Add user message to conversation
+      conversation.innerHTML += `<div class="user-message">You: ${text}</div>`;
+      
+      // Clear input
+      userInput.value = '';
+      
+      // Simple analysis
+      const lowerText = text.toLowerCase();
+      let scoreDelta = 0;
+      let aidDelta = 0;
+      
+      // Analyze message
+      if (lowerText.includes('biden') || lowerText.includes('investigate')) {
+        scoreDelta += 30;
+        aidDelta += 20;
+      }
+      
+      if (lowerText.includes('great') || lowerText.includes('amazing') || lowerText.includes('wonderful')) {
+        scoreDelta += 10;
+        aidDelta += 5;
+      }
+      
+      if (lowerText.includes('no') || lowerText.includes('won\'t') || lowerText.includes('cannot')) {
+        scoreDelta -= 15;
+        aidDelta -= 10;
+      }
+      
+      // Update score and aid
+      score += scoreDelta;
+      aidReleased = Math.min(100, Math.max(0, aidReleased + aidDelta));
+      
+      // Update displays
+      scoreDisplay.textContent = score;
+      aidDisplay.textContent = aidReleased;
+      
+      // Generate a response
+      let response;
+      if (lowerText.includes('biden') || lowerText.includes('investigate')) {
+        response = "That's what I want to hear. The Biden situation is very bad, very corrupt. Look into it.";
+      } else if (lowerText.includes('great') || lowerText.includes('amazing')) {
+        response = "That's right. I'm the best president for Ukraine, maybe ever.";
+      } else if (lowerText.includes('weapon') || lowerText.includes('aid') || lowerText.includes('support')) {
+        response = "I would love to release that aid. But first I need you to do us a favor, though.";
+      } else {
+        response = "Look, we give a lot to Ukraine. But I need something in return. That's just how deals work.";
+      }
+      
+      // Add AI response
+      setTimeout(function() {
+        conversation.innerHTML += `<div class="ai-message">Trump: ${response}</div>`;
+        conversation.scrollTop = conversation.scrollHeight;
+      }, 500);
+    }
+  </script>
+</body>
+</html>

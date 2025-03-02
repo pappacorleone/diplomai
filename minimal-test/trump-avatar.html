@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trump-Zelensky Negotiation Simulator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f0f0f0;
+      margin: 0;
+      padding: 20px;
+      color: #333;
+    }
+    
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background-color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      padding: 20px;
+    }
+    
+    header {
+      text-align: center;
+      margin-bottom: 20px;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 20px;
+    }
+    
+    h1 {
+      margin: 0;
+      color: #1a53ff;
+    }
+    
+    .subtitle {
+      font-style: italic;
+      color: #666;
+    }
+    
+    .game-area {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    
+    .avatar-container {
+      width: 100%;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    
+    .avatar {
+      width: 300px;
+      height: 300px;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 2px solid #ddd;
+    }
+    
+    .status-panel {
+      display: flex;
+      justify-content: space-around;
+      background-color: #f9f9f9;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    
+    .status-item {
+      text-align: center;
+    }
+    
+    .status-value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #1a53ff;
+    }
+    
+    .status-label {
+      font-size: 14px;
+      color: #666;
+    }
+    
+    .conversation {
+      height: 300px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+    
+    .message {
+      margin-bottom: 15px;
+      padding: 10px 15px;
+      border-radius: 8px;
+      max-width: 80%;
+    }
+    
+    .ai-message {
+      background-color: #f0f7ff;
+      margin-right: auto;
+      border-left: 4px solid #1a53ff;
+    }
+    
+    .user-message {
+      background-color: #f0fff5;
+      margin-left: auto;
+      text-align: right;
+      border-right: 4px solid #00cc44;
+    }
+    
+    .sender {
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    
+    .ai-sender {
+      color: #1a53ff;
+    }
+    
+    .user-sender {
+      color: #00cc44;
+    }
+    
+    .input-area {
+      display: flex;
+      gap: 10px;
+    }
+    
+    input {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 16px;
+    }
+    
+    button {
+      padding: 10px 20px;
+      background-color: #1a53ff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background-color 0.2s;
+    }
+    
+    button:hover {
+      background-color: #0033cc;
+    }
+    
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    
+    .status-progress {
+      width: 100%;
+      background-color: #ddd;
+      height: 12px;
+      border-radius: 6px;
+      margin-top: 5px;
+      overflow: hidden;
+    }
+    
+    .progress-bar {
+      height: 100%;
+      background-color: #1a53ff;
+      transition: width 0.5s ease-in-out;
+    }
+    
+    .game-controls {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    
+    .reset-btn {
+      background-color: #ff3333;
+    }
+    
+    .reset-btn:hover {
+      background-color: #cc0000;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: #666;
+      display: none;
+    }
+    
+    .loading.visible {
+      display: block;
+    }
+    
+    .loading-dots::after {
+      content: '.';
+      animation: dots 1.5s steps(5, end) infinite;
+    }
+    
+    @keyframes dots {
+      0%, 20% { content: '.'; }
+      40% { content: '..'; }
+      60% { content: '...'; }
+      80%, 100% { content: ''; }
+    }
+    
+    .instructions {
+      background-color: #fffaf0;
+      padding: 15px;
+      border-radius: 8px;
+      margin-top: 20px;
+      border-left: 4px solid #ffcc00;
+    }
+    
+    .instructions h3 {
+      margin-top: 0;
+      color: #cc9900;
+    }
+    
+    .avatar-talking {
+      animation: talking 0.5s ease-in-out infinite;
+    }
+    
+    @keyframes talking {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.02); }
+      100% { transform: scale(1); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Trump-Zelensky Negotiation Simulator</h1>
+      <p class="subtitle">Can you secure the military aid package?</p>
+    </header>
+    
+    <div class="game-area">
+      <div class="avatar-container">
+        <img id="trumpAvatar" src="https://www.whitehouse.gov/wp-content/uploads/2021/01/45_donald_j_trump.jpg" alt="President Trump" class="avatar">
+      </div>
+      
+      <div class="status-panel">
+        <div class="status-item">
+          <div class="status-value" id="scoreValue">0</div>
+          <div class="status-label">Relationship Score</div>
+        </div>
+        <div class="status-item">
+          <div class="status-value" id="aidValue">0%</div>
+          <div class="status-label">Military Aid Released</div>
+          <div class="status-progress">
+            <div class="progress-bar" id="aidProgress" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="conversation" id="conversation">
+        <!-- Messages will be added here -->
+      </div>
+      
+      <div class="input-area">
+        <input type="text" id="userInput" placeholder="Type your response as President Zelensky..." autocomplete="off">
+        <button id="sendBtn">Send</button>
+      </div>
+      
+      <div class="game-controls">
+        <button id="resetBtn" class="reset-btn">New Conversation</button>
+      </div>
+      
+      <div class="loading" id="loadingIndicator">
+        <span>Processing your response<span class="loading-dots"></span></span>
+      </div>
+      
+      <div class="instructions">
+        <h3>Negotiation Tips</h3>
+        <p>As President Zelensky, your goal is to secure military aid from the United States. Try different negotiation strategies:</p>
+        <ul>
+          <li>Discuss investigating political figures</li>
+          <li>Offer media opportunities</li>
+          <li>Address corruption concerns</li>
+          <li>Show gratitude for U.S. support</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // Configuration
+    const API_BASE_URL = 'http://localhost:3004/api'; // Server URL
+    
+    // DOM Elements
+    const conversationEl = document.getElementById('conversation');
+    const userInputEl = document.getElementById('userInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const loadingIndicator = document.getElementById('loadingIndicator');
+    const scoreValueEl = document.getElementById('scoreValue');
+    const aidValueEl = document.getElementById('aidValue');
+    const aidProgressEl = document.getElementById('aidProgress');
+    const trumpAvatar = document.getElementById('trumpAvatar');
+    
+    // State
+    let sessionId = null;
+    let isSending = false;
+    
+    // Check server connection
+    async function checkServer() {
+      try {
+        const response = await fetch(`${API_BASE_URL}/health`);
+        if (response.ok) {
+          console.log('Server connection successful');
+          return true;
+        } else {
+          console.error('Server error:', await response.text());
+          addMessage('system', 'Error connecting to the server. Please try again later.');
+          return false;
+        }
+      } catch (error) {
+        console.error('Server connection failed:', error);
+        addMessage('system', 'Could not connect to the server. Please check your connection.');
+        return false;
+      }
+    }
+    
+    // Add message to conversation
+    function addMessage(sender, text, animate = true) {
+      const messageEl = document.createElement('div');
+      messageEl.className = `message ${sender}-message`;
+      
+      const senderEl = document.createElement('div');
+      senderEl.className = `sender ${sender}-sender`;
+      
+      if (sender === 'ai') {
+        senderEl.textContent = 'President Trump';
+        // Make avatar appear to talk
+        trumpAvatar.classList.add('avatar-talking');
+        setTimeout(() => {
+          trumpAvatar.classList.remove('avatar-talking');
+        }, 3000); // Stop after 3 seconds
+      } else if (sender === 'user') {
+        senderEl.textContent = 'President Zelensky';
+      } else {
+        senderEl.textContent = 'System';
+      }
+      
+      const textEl = document.createElement('div');
+      textEl.textContent = text;
+      
+      messageEl.appendChild(senderEl);
+      messageEl.appendChild(textEl);
+      
+      conversationEl.appendChild(messageEl);
+      conversationEl.scrollTop = conversationEl.scrollHeight;
+    }
+    
+    // Update game state display
+    function updateGameState(state) {
+      scoreValueEl.textContent = state.score;
+      aidValueEl.textContent = `${state.aidReleased}%`;
+      aidProgressEl.style.width = `${state.aidReleased}%`;
+    }
+    
+    // Start a new game session
+    async function startSession() {
+      try {
+        setLoading(true);
+        disableInput();
+        
+        const response = await fetch(`${API_BASE_URL}/session/start`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to start session');
+        }
+        
+        const data = await response.json();
+        sessionId = data.sessionId;
+        
+        // Clear conversation
+        conversationEl.innerHTML = '';
+        
+        // Add initial AI message
+        addMessage('ai', data.initial);
+        
+        // Update state
+        updateGameState(data.state);
+        
+        enableInput();
+      } catch (error) {
+        console.error('Failed to start session:', error);
+        addMessage('system', 'Failed to start a new conversation. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    // Send user input to server
+    async function sendUserInput() {
+      const text = userInputEl.value.trim();
+      
+      if (!text || isSending || !sessionId) return;
+      
+      try {
+        isSending = true;
+        disableInput();
+        setLoading(true);
+        
+        // Add user message to conversation immediately
+        addMessage('user', text);
+        
+        // Clear input field
+        userInputEl.value = '';
+        
+        const response = await fetch(`${API_BASE_URL}/session/${sessionId}/interact`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ text })
+        });
+        
+        if (!response.ok) {
+          throw new Error('Interaction failed');
+        }
+        
+        const data = await response.json();
+        
+        // Add AI response
+        addMessage('ai', data.aiResponse);
+        
+        // Update game state
+        updateGameState(data.state);
+        
+        // Show score change if any
+        if (data.scoreChange > 0) {
+          showScoreChange(data.scoreChange);
+        }
+      } catch (error) {
+        console.error('Failed to send message:', error);
+        addMessage('system', 'Failed to send your message. Please try again.');
+      } finally {
+        setLoading(false);
+        enableInput();
+        isSending = false;
+      }
+    }
+    
+    // Show an animation for score change
+    function showScoreChange(points) {
+      const scoreChangeEl = document.createElement('div');
+      scoreChangeEl.className = 'score-change';
+      scoreChangeEl.textContent = `+${points}`;
+      scoreChangeEl.style.position = 'absolute';
+      scoreChangeEl.style.right = '20px';
+      scoreChangeEl.style.top = '100px';
+      scoreChangeEl.style.background = '#5cb85c';
+      scoreChangeEl.style.color = 'white';
+      scoreChangeEl.style.padding = '5px 10px';
+      scoreChangeEl.style.borderRadius = '5px';
+      scoreChangeEl.style.opacity = '0';
+      scoreChangeEl.style.transform = 'translateY(0)';
+      scoreChangeEl.style.transition = 'all 1.5s ease-out';
+      
+      document.body.appendChild(scoreChangeEl);
+      
+      // Animate
+      setTimeout(() => {
+        scoreChangeEl.style.opacity = '1';
+        scoreChangeEl.style.transform = 'translateY(-50px)';
+      }, 100);
+      
+      // Remove after animation
+      setTimeout(() => {
+        document.body.removeChild(scoreChangeEl);
+      }, 1600);
+    }
+    
+    // End the current session
+    async function endSession() {
+      if (!sessionId) return;
+      
+      try {
+        await fetch(`${API_BASE_URL}/session/${sessionId}/end`, {
+          method: 'POST'
+        });
+        
+        sessionId = null;
+      } catch (error) {
+        console.error('Failed to end session:', error);
+      }
+    }
+    
+    // UI helper functions
+    function setLoading(isLoading) {
+      loadingIndicator.classList.toggle('visible', isLoading);
+    }
+    
+    function enableInput() {
+      userInputEl.disabled = false;
+      sendBtn.disabled = false;
+    }
+    
+    function disableInput() {
+      userInputEl.disabled = true;
+      sendBtn.disabled = true;
+    }
+    
+    // Event listeners
+    window.addEventListener('DOMContentLoaded', async () => {
+      // Check server connection
+      const serverReady = await checkServer();
+      
+      if (serverReady) {
+        // Start a new session
+        await startSession();
+      }
+    });
+    
+    sendBtn.addEventListener('click', sendUserInput);
+    
+    userInputEl.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        sendUserInput();
+      }
+    });
+    
+    resetBtn.addEventListener('click', async () => {
+      await endSession();
+      await startSession();
+    });
+    
+    // Clean up on page unload
+    window.addEventListener('beforeunload', endSession);
+  </script>
+</body>
+</html>
