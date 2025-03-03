@@ -4,9 +4,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // Default avatar options
-const DEFAULT_AVATAR_NAME = 'trump_45'; // Assuming there's a Trump avatar with this name
+const DEFAULT_AVATAR_ID = 'Dexter_Lawyer_Sitting_public';
 const DEFAULT_AVATAR_QUALITY = 'standard';
-const DEFAULT_VOICE_NAME = 'trump'; // Assuming there's a Trump voice with this name
 
 class HeyGenService {
   constructor() {
@@ -24,9 +23,8 @@ class HeyGenService {
     try {
       // Create and start avatar session
       const sessionData = await this.avatarClient.createStartAvatar({
-        avatarName: DEFAULT_AVATAR_NAME,
+        avatarName: DEFAULT_AVATAR_ID,
         quality: DEFAULT_AVATAR_QUALITY,
-        voiceName: DEFAULT_VOICE_NAME
       });
 
       // Store session data for later use

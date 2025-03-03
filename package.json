@@ -1,0 +1,13 @@
+{
+  "name": "diplomai-root",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "scripts": {
+    "test-server": "node simple-server.cjs"
+  },
+  "dependencies": {
+    "@heygen/streaming-avatar": "^2.0.10",
+    "express": "^4.18.2",
+    "node-fetch": "^3.3.2"
+  }
+}

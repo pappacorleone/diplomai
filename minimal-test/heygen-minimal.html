@@ -79,11 +79,7 @@
     
     // LiveKit variables
     let room;
-    let stream;
-    let participants = [];
-    let token;
-    let roomName;
-    let wsUrl;
+    let sessionId;
     
     // API Endpoint (change as needed)
     const API_BASE = 'http://localhost:3003/api';
@@ -105,7 +101,18 @@
         }
         
         const tokenData = await tokenResponse.json();
-        token = tokenData.token;
+        console.log('Received token data:', tokenData);
+        sessionId = tokenData.sessionId; // Use the directly provided sessionId
+        
+        // Make sure the wsUrl is a valid URL
+        let wsUrl = tokenData.wsUrl;
+        if (!wsUrl.startsWith('ws://') && !wsUrl.startsWith('wss://')) {
+          console.log('Invalid wsUrl format, adding wss:// prefix:', wsUrl);
+          wsUrl = 'wss://' + wsUrl;
+        }
+        
+        console.log('Using WebSocket URL:', wsUrl);
+        console.log('Using room token:', tokenData.token);
         
         // Connect to HeyGen's streaming service
         room = new LivekitClient.Room({
@@ -116,14 +123,24 @@
         room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
           if (track.kind === 'video') {
             track.attach(avatarVideoElement);
+            updateStatus('Video track attached');
           }
         });
         
-        // HeyGen LiveKit connection details (these will be provided by HeyGen API)
-        wsUrl = 'wss://stream-house.heygen.com';
-        roomName = 'test-room'; // This would normally come from HeyGen API
+        room.on(LivekitClient.RoomEvent.Disconnected, () => {
+          updateStatus('Disconnected from avatar service');
+          startBtn.disabled = false;
+          speakBtn.disabled = true;
+          stopBtn.disabled = true;
+        });
         
-        await room.connect(wsUrl, token);
+        room.on(LivekitClient.RoomEvent.ConnectionStateChanged, (state) => {
+          updateStatus(`Connection state: ${state}`);
+        });
+        
+        // Connect to LiveKit using the provided token and websocket URL
+        await room.connect(wsUrl, tokenData.token);
+        updateStatus(`Connected to LiveKit room: ${tokenData.roomName}`);
         
         // Enable controls
         speakBtn.disabled = false;
@@ -137,23 +154,38 @@
     }
     
     async function sendTextToAvatar(text) {
-      if (!text || !room) return;
+      if (!text || !sessionId) return;
       
       try {
         updateStatus('Sending text to avatar...');
         speakBtn.disabled = true;
         
-        // In a real implementation, we would send this to HeyGen's API
-        // For this minimal example, we'll just simulate it
+        // Send text to server to make avatar speak
+        const speakResponse = await fetch(`${API_BASE}/heygen/speak`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            sessionId: sessionId,
+            text: text
+          })
+        });
+        
+        if (!speakResponse.ok) {
+          throw new Error('Failed to send text to avatar');
+        }
+        
+        updateStatus('Avatar speaking...');
+        
+        // Clear input field
+        textInput.value = '';
+        
+        // Re-enable button after a delay for better UX
         setTimeout(() => {
-          updateStatus('Avatar speaking...');
-          
-          // Re-enable button after a delay
-          setTimeout(() => {
-            speakBtn.disabled = false;
-            updateStatus('Ready for more input');
-          }, 3000);
-        }, 1000);
+          speakBtn.disabled = false;
+          updateStatus('Ready for more input');
+        }, 500);
       } catch (error) {
         console.error('Failed to send text:', error);
         updateStatus('Error: ' + error.message);
@@ -163,6 +195,23 @@
     
     async function disconnectAvatar() {
       try {
+        updateStatus('Disconnecting avatar...');
+        stopBtn.disabled = true;
+        
+        // End session on server
+        if (sessionId) {
+          await fetch(`${API_BASE}/heygen/end`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              sessionId: sessionId
+            })
+          });
+        }
+        
+        // Disconnect from LiveKit room
         if (room) {
           await room.disconnect();
         }
@@ -172,9 +221,19 @@
         speakBtn.disabled = true;
         stopBtn.disabled = true;
         updateStatus('Avatar disconnected');
+        
+        // Clear video element
+        if (avatarVideoElement.srcObject) {
+          avatarVideoElement.srcObject.getTracks().forEach(track => track.stop());
+          avatarVideoElement.srcObject = null;
+        }
+        
+        // Clear session ID
+        sessionId = null;
       } catch (error) {
         console.error('Failed to disconnect:', error);
         updateStatus('Error disconnecting: ' + error.message);
+        stopBtn.disabled = false;
       }
     }
     

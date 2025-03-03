@@ -39,7 +39,7 @@ app.get('/api/config/gemini-key', (req, res) => {
   res.json({ apiKey: process.env.GEMINI_API_KEY });
 });
 
-// New endpoint for HeySen API configuration
+// New endpoint for HeyGen API configuration
 app.get('/api/config/heygen-info', (req, res) => {
   if (!process.env.HEYGEN_API_KEY) {
     return res.status(404).json({ error: 'HeyGen API key not configured' });
@@ -143,6 +143,67 @@ app.post('/api/session/:sessionId/end', async (req, res) => {
   } catch (error) {
     console.error('Failed to end session:', error);
     res.status(500).json({ error: 'Failed to end session' });
+  }
+});
+
+// New endpoint for HeyGen avatar token
+app.get('/api/heygen/token', async (req, res) => {
+  try {
+    if (!process.env.HEYGEN_API_KEY) {
+      return res.status(404).json({ error: 'HeyGen API key not configured' });
+    }
+    
+    // Create a new HeyGen session
+    const heygenData = await heygenService.createSession();
+    
+    if (!heygenData) {
+      throw new Error('Failed to create HeyGen session');
+    }
+    
+    // Return the token data with exact property names expected by LiveKit client
+    res.json({
+      token: heygenData.token,
+      roomName: heygenData.roomName,
+      wsUrl: heygenData.wsUrl,
+      sessionId: heygenData.sessionId  // Added sessionId for direct access
+    });
+  } catch (error) {
+    console.error('Failed to get HeyGen token:', error);
+    res.status(500).json({ error: 'Failed to get HeyGen token' });
+  }
+});
+
+// New endpoint for HeyGen avatar speech
+app.post('/api/heygen/speak', async (req, res) => {
+  try {
+    const { sessionId, text } = req.body;
+    
+    if (!sessionId || !text) {
+      return res.status(400).json({ error: 'Missing sessionId or text' });
+    }
+    
+    const result = await heygenService.speakText(sessionId, text);
+    res.json({ success: true, result });
+  } catch (error) {
+    console.error('Failed to make avatar speak:', error);
+    res.status(500).json({ error: 'Failed to make avatar speak' });
+  }
+});
+
+// New endpoint to end HeyGen avatar session
+app.post('/api/heygen/end', async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+    
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Missing sessionId' });
+    }
+    
+    const success = await heygenService.endSession(sessionId);
+    res.json({ success });
+  } catch (error) {
+    console.error('Failed to end HeyGen session:', error);
+    res.status(500).json({ error: 'Failed to end HeyGen session' });
   }
 });
 
