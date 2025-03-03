@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HeyGen Streaming Avatar Test</title>
+    <script src="https://unpkg.com/@heygen/streaming-avatar@0.3.1/dist/index.browser.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        video {
+            width: 100%;
+            max-height: 400px;
+            background: #f0f0f0;
+        }
+        
+        button {
+            margin: 10px 5px;
+            padding: 8px 16px;
+            background: #2c3e50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        button:disabled {
+            background: #95a5a6;
+        }
+        
+        textarea {
+            width: 100%;
+            height: 80px;
+            margin: 10px 0;
+            padding: 8px;
+        }
+        
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>HeyGen Streaming Avatar Test</h1>
+    
+    <video id="avatarVideo" autoplay playsinline></video>
+    
+    <div class="status" id="statusText">Ready to start</div>
+    
+    <div>
+        <button id="startButton">Start Session</button>
+        <button id="endButton" disabled>End Session</button>
+    </div>
+    
+    <textarea id="speakText" placeholder="Type something for the avatar to say..."></textarea>
+    <button id="speakButton" disabled>Speak</button>
+    
+    <script>
+        // DOM Elements
+        const videoElement = document.getElementById('avatarVideo');
+        const statusText = document.getElementById('statusText');
+        const startButton = document.getElementById('startButton');
+        const endButton = document.getElementById('endButton');
+        const speakText = document.getElementById('speakText');
+        const speakButton = document.getElementById('speakButton');
+        
+        // Variables
+        let avatar = null;
+        let sessionId = null;
+        const AVATAR_ID = 'Dexter_Lawyer_Sitting_public';
+        
+        // Check if the SDK is loaded
+        if (typeof StreamingAvatar !== 'undefined') {
+            statusText.textContent = 'SDK loaded successfully';
+        } else {
+            statusText.textContent = 'Error: SDK not loaded';
+        }
+        
+        // Start a session
+        async function startSession() {
+            try {
+                statusText.textContent = 'Getting token...';
+                startButton.disabled = true;
+                
+                // Get token from our backend
+                const response = await fetch('http://localhost:3001/api/heygen/token');
+                const data = await response.json();
+                
+                if (data.isMock) {
+                    statusText.textContent = 'Running in mock mode (no HeyGen API)';
+                    // Enable buttons anyway for testing
+                    endButton.disabled = false;
+                    speakButton.disabled = false;
+                    return;
+                }
+                
+                if (!data.token) {
+                    throw new Error('No token returned from server');
+                }
+                
+                sessionId = data.sessionId;
+                
+                // Initialize avatar with token
+                statusText.textContent = 'Initializing avatar...';
+                
+                // Make sure StreamingAvatar is defined
+                if (typeof StreamingAvatar === 'undefined') {
+                    throw new Error('StreamingAvatar SDK not loaded');
+                }
+                
+                // Create avatar
+                avatar = new StreamingAvatar({ token: data.token });
+                
+                // Set up event handlers
+                avatar.on('STREAM_READY', (event) => {
+                    console.log('Stream ready:', event);
+                    if (event.detail) {
+                        videoElement.srcObject = event.detail;
+                        videoElement.play().catch(console.error);
+                    }
+                });
+                
+                avatar.on('STREAM_DISCONNECTED', () => {
+                    console.log('Stream disconnected');
+                    videoElement.srcObject = null;
+                    statusText.textContent = 'Stream disconnected';
+                });
+                
+                // Start avatar
+                const avatarData = await avatar.createStartAvatar({
+                    quality: 'Standard',
+                    avatarName: AVATAR_ID
+                });
+                
+                console.log('Avatar started:', avatarData);
+                statusText.textContent = 'Connected to HeyGen API';
+                
+                // Enable buttons
+                endButton.disabled = false;
+                speakButton.disabled = false;
+                
+            } catch (error) {
+                console.error('Error starting session:', error);
+                statusText.textContent = `Error: ${error.message}`;
+                startButton.disabled = false;
+            }
+        }
+        
+        // End the session
+        async function endSession() {
+            try {
+                statusText.textContent = 'Ending session...';
+                
+                if (avatar) {
+                    await avatar.stopAvatar();
+                    avatar = null;
+                }
+                
+                if (sessionId) {
+                    await fetch(`http://localhost:3001/api/heygen/end?sessionId=${sessionId}`);
+                    sessionId = null;
+                }
+                
+                videoElement.srcObject = null;
+                statusText.textContent = 'Session ended';
+                
+                // Reset buttons
+                startButton.disabled = false;
+                endButton.disabled = true;
+                speakButton.disabled = true;
+                
+            } catch (error) {
+                console.error('Error ending session:', error);
+                statusText.textContent = `Error ending session: ${error.message}`;
+            }
+        }
+        
+        // Make the avatar speak
+        async function speak() {
+            try {
+                const text = speakText.value.trim();
+                if (!text) return;
+                
+                speakButton.disabled = true;
+                statusText.textContent = 'Speaking...';
+                
+                if (avatar) {
+                    await avatar.speak({ text });
+                    statusText.textContent = 'Speech completed';
+                } else {
+                    statusText.textContent = 'No active avatar session';
+                }
+                
+                speakButton.disabled = false;
+                
+            } catch (error) {
+                console.error('Error making avatar speak:', error);
+                statusText.textContent = `Error speaking: ${error.message}`;
+                speakButton.disabled = false;
+            }
+        }
+        
+        // Event listeners
+        startButton.addEventListener('click', startSession);
+        endButton.addEventListener('click', endSession);
+        speakButton.addEventListener('click', speak);
+        
+        // Log if StreamingAvatar is available in window
+        console.log('StreamingAvatar available:', typeof StreamingAvatar !== 'undefined');
+    </script>
+</body>
+</html>

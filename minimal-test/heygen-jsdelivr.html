@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HeyGen jsDelivr Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        video {
+            width: 100%;
+            max-height: 400px;
+            background: #f0f0f0;
+        }
+        
+        button {
+            margin: 10px 5px;
+            padding: 8px 16px;
+            background: #2c3e50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        button:disabled {
+            background: #95a5a6;
+        }
+        
+        textarea {
+            width: 100%;
+            height: 80px;
+            margin: 10px 0;
+            padding: 8px;
+        }
+        
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        
+        .debug {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 200px;
+            overflow: auto;
+        }
+    </style>
+    
+    <!-- Use jsDelivr CDN instead of unpkg -->
+    <script src="https://cdn.jsdelivr.net/npm/@heygen/streaming-avatar@0.3.1/dist/index.browser.js"></script>
+</head>
+<body>
+    <h1>HeyGen jsDelivr Test</h1>
+    
+    <div class="status" id="statusText">Initializing...</div>
+    <div class="debug" id="debugOutput"></div>
+    
+    <video id="avatarVideo" autoplay playsinline></video>
+    
+    <div>
+        <button id="startButton">Start Session</button>
+        <button id="endButton" disabled>End Session</button>
+    </div>
+    
+    <textarea id="speakText" placeholder="Type something for the avatar to say..."></textarea>
+    <button id="speakButton" disabled>Speak</button>
+    
+    <script>
+        // Add output to debug area
+        function debugLog(message) {
+            const debugOutput = document.getElementById('debugOutput');
+            const logText = (typeof message === 'object') 
+                ? JSON.stringify(message, null, 2) 
+                : message;
+            debugOutput.textContent += logText + '\n';
+            console.log(message);
+        }
+        
+        function updateStatus(message) {
+            document.getElementById('statusText').textContent = message;
+            debugLog('Status: ' + message);
+        }
+        
+        // DOM Elements
+        const videoElement = document.getElementById('avatarVideo');
+        const startButton = document.getElementById('startButton');
+        const endButton = document.getElementById('endButton');
+        const speakText = document.getElementById('speakText');
+        const speakButton = document.getElementById('speakButton');
+        
+        // Variables
+        let avatar = null;
+        let sessionId = null;
+        const AVATAR_ID = 'Dexter_Lawyer_Sitting_public';
+        
+        // Check if SDK is loaded
+        function checkSdkLoaded() {
+            try {
+                debugLog('Window keys: ' + Object.keys(window).join(', '));
+                const hasStreamingAvatar = typeof window.StreamingAvatar !== 'undefined';
+                
+                debugLog('StreamingAvatar available: ' + hasStreamingAvatar);
+                
+                if (hasStreamingAvatar) {
+                    updateStatus('SDK loaded successfully');
+                    return true;
+                } else {
+                    updateStatus('Error: SDK not loaded');
+                    return false;
+                }
+            } catch (error) {
+                debugLog('Error checking SDK: ' + error.message);
+                updateStatus('Error checking SDK');
+                return false;
+            }
+        }
+        
+        // Start a session
+        async function startSession() {
+            try {
+                if (!checkSdkLoaded()) {
+                    throw new Error('SDK not loaded - cannot start session');
+                }
+                
+                updateStatus('Getting token...');
+                startButton.disabled = true;
+                
+                // Get token from our backend
+                const response = await fetch('/api/heygen/token');
+                const data = await response.json();
+                
+                debugLog('Token response:');
+                debugLog(data);
+                
+                if (data.isMock) {
+                    updateStatus('Running in mock mode (no HeyGen API)');
+                    // Enable buttons anyway for testing
+                    endButton.disabled = false;
+                    speakButton.disabled = false;
+                    return;
+                }
+                
+                if (!data.token) {
+                    throw new Error('No token returned from server');
+                }
+                
+                sessionId = data.sessionId;
+                
+                // Initialize avatar with token
+                updateStatus('Initializing avatar...');
+                
+                // Create avatar
+                avatar = new window.StreamingAvatar({ token: data.token });
+                debugLog('Avatar created');
+                
+                // Set up event handlers
+                avatar.on('STREAM_READY', (event) => {
+                    debugLog('Stream ready event:');
+                    debugLog(event);
+                    
+                    if (event.detail) {
+                        videoElement.srcObject = event.detail;
+                        videoElement.play().catch(error => {
+                            debugLog('Error playing video: ' + error);
+                        });
+                    }
+                });
+                
+                avatar.on('STREAM_DISCONNECTED', () => {
+                    debugLog('Stream disconnected');
+                    videoElement.srcObject = null;
+                    updateStatus('Stream disconnected');
+                });
+                
+                // Start avatar
+                debugLog('Starting avatar with ID: ' + AVATAR_ID);
+                const avatarData = await avatar.createStartAvatar({
+                    quality: 'Standard',
+                    avatarName: AVATAR_ID
+                });
+                
+                debugLog('Avatar started:');
+                debugLog(avatarData);
+                updateStatus('Connected to HeyGen API');
+                
+                // Enable buttons
+                endButton.disabled = false;
+                speakButton.disabled = false;
+                
+            } catch (error) {
+                debugLog('Error starting session: ' + error.message);
+                updateStatus('Error: ' + error.message);
+                startButton.disabled = false;
+            }
+        }
+        
+        // End the session
+        async function endSession() {
+            try {
+                updateStatus('Ending session...');
+                
+                if (avatar) {
+                    await avatar.stopAvatar();
+                    avatar = null;
+                }
+                
+                if (sessionId) {
+                    await fetch(`/api/heygen/end`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ sessionId })
+                    });
+                    sessionId = null;
+                }
+                
+                videoElement.srcObject = null;
+                updateStatus('Session ended');
+                
+                // Reset buttons
+                startButton.disabled = false;
+                endButton.disabled = true;
+                speakButton.disabled = true;
+                
+            } catch (error) {
+                debugLog('Error ending session: ' + error.message);
+                updateStatus('Error ending session: ' + error.message);
+            }
+        }
+        
+        // Make the avatar speak
+        async function speak() {
+            try {
+                const text = speakText.value.trim();
+                if (!text) return;
+                
+                speakButton.disabled = true;
+                updateStatus('Speaking...');
+                
+                if (avatar) {
+                    debugLog('Making avatar speak: ' + text);
+                    await avatar.speak({ text });
+                    updateStatus('Speech completed');
+                } else {
+                    updateStatus('No active avatar session');
+                }
+                
+                speakButton.disabled = false;
+                
+            } catch (error) {
+                debugLog('Error making avatar speak: ' + error.message);
+                updateStatus('Error speaking: ' + error.message);
+                speakButton.disabled = false;
+            }
+        }
+        
+        // Initial SDK check
+        window.onload = function() {
+            checkSdkLoaded();
+        };
+        
+        // Event listeners
+        startButton.addEventListener('click', startSession);
+        endButton.addEventListener('click', endSession);
+        speakButton.addEventListener('click', speak);
+    </script>
+</body>
+</html>

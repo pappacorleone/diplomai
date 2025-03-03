@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Trump-Zelensky Negotiation Simulator</title>
+  <title>Trump-Zelensky Negotiation Simulator (Mock Version)</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -49,556 +49,514 @@
       z-index: 10;
     }
     
-    .trump-indicator {
-      position: absolute;
-      bottom: 10px;
-      left: 10px;
-      background-color: rgba(0, 0, 0, 0.7);
-      color: white;
-      padding: 5px 10px;
-      border-radius: 4px;
-      font-size: 14px;
-      z-index: 10;
-    }
-    
-    #speechBubble {
+    .speech-bubble {
       position: absolute;
       bottom: 20px;
       left: 20px;
       right: 20px;
-      background-color: rgba(255, 255, 255, 0.9);
+      background-color: rgba(255, 255, 255, 0.8);
+      border-radius: 8px;
       padding: 15px;
-      border-radius: 10px;
-      display: none;
-      color: #000;
-      font-size: 18px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      z-index: 5;
+      max-height: 30%;
+      overflow-y: auto;
+    }
+    
+    .speech-bubble.visible {
+      opacity: 1;
     }
     
     .controls {
-      margin-top: 20px;
       display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
+      margin-bottom: 20px;
     }
     
-    button {
-      padding: 10px 20px;
-      background-color: #1a53ff;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      transition: background-color 0.3s;
-    }
-    
-    button:hover {
-      background-color: #0033cc;
-    }
-    
-    button:disabled {
-      background-color: #cccccc;
-      cursor: not-allowed;
-    }
-    
-    input {
-      flex: 1;
-      min-width: 200px;
+    .controls input {
+      flex-grow: 1;
       padding: 10px;
       border: 1px solid #ddd;
-      border-radius: 4px;
+      border-radius: 4px 0 0 4px;
       font-size: 16px;
     }
     
-    .status {
-      margin: 10px 0;
-      color: #666;
-      font-style: italic;
-    }
-    
-    .talking {
-      animation: pulse 1s infinite alternate;
-    }
-    
-    @keyframes pulse {
-      0% { transform: scale(1); }
-      100% { transform: scale(1.03); }
-    }
-    
-    #gameState {
-      margin-top: 20px;
-      border-top: 1px solid #eee;
-      padding-top: 20px;
-    }
-    
-    .score-container {
-      width: 100%;
-      background-color: #e0e0e0;
-      border-radius: 4px;
-      margin: 10px 0;
-    }
-    
-    .progress-container {
-      width: 100%;
-      background-color: #e0e0e0;
-      border-radius: 4px;
-      margin: 10px 0;
-    }
-    
-    .progress-bar {
-      height: 20px;
-      border-radius: 4px;
-      background-color: #4CAF50;
-      text-align: center;
-      line-height: 20px;
+    .controls button {
+      padding: 10px 20px;
+      background-color: #2962ff;
       color: white;
-      transition: width 0.5s;
+      border: none;
+      border-radius: 0 4px 4px 0;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    
+    .controls button:hover {
+      background-color: #0039cb;
+    }
+    
+    .controls button:disabled {
+      background-color: #b0bec5;
+      cursor: not-allowed;
+    }
+    
+    .status {
+      background-color: #f0f0f0;
+      padding: 10px;
+      margin-bottom: 20px;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    
+    .game-state {
+      display: flex;
+      margin-bottom: 20px;
+      background-color: #f9f9f9;
+      padding: 15px;
+      border-radius: 8px;
+    }
+    
+    .game-state-item {
+      flex: 1;
+      text-align: center;
+    }
+    
+    .game-state-value {
+      font-size: 24px;
+      font-weight: bold;
+      margin-top: 5px;
     }
     
     .conversation {
-      margin-top: 20px;
-      max-height: 200px;
+      max-height: 300px;
       overflow-y: auto;
-      border: 1px solid #eee;
-      padding: 10px;
+      border: 1px solid #ddd;
       border-radius: 4px;
+      padding: 10px;
+      margin-bottom: 20px;
     }
     
     .message {
       margin-bottom: 10px;
-      padding: 8px 12px;
-      border-radius: 8px;
-      max-width: 80%;
-    }
-    
-    .user-message {
-      background-color: #e6f7ff;
-      margin-left: auto;
-      text-align: right;
-    }
-    
-    .ai-message {
-      background-color: #f0f0f0;
-      margin-right: auto;
-    }
-    
-    h2 {
-      color: #333;
-      border-bottom: 1px solid #eee;
-      padding-bottom: 10px;
-    }
-    
-    .score-container {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    
-    .score-box {
-      background-color: #f0f0f0;
       padding: 10px;
       border-radius: 4px;
-      text-align: center;
-      flex: 1;
-      margin: 0 5px;
     }
     
-    .score-box h3 {
-      margin: 0;
-      color: #555;
-      font-size: 14px;
+    .message.zelensky {
+      background-color: #e3f2fd;
+      margin-right: 20%;
     }
     
-    .score-box p {
-      margin: 5px 0 0 0;
-      font-size: 18px;
+    .message.trump {
+      background-color: #ffebee;
+      margin-left: 20%;
+    }
+    
+    .sender {
       font-weight: bold;
-      color: #333;
+      margin-bottom: 5px;
     }
     
-    /* Mock video frame styling */
-    .video-mock-container {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      background-color: rgba(0, 0, 0, 0.7);
-      z-index: 5;
-      pointer-events: none;
+    .debug-panel {
+      margin-top: 20px;
+      padding: 10px;
+      background-color: #f0f0f0;
+      border-radius: 4px;
+      font-family: monospace;
+      max-height: 200px;
+      overflow-y: auto;
     }
     
-    .video-mock-message {
-      color: white;
-      text-align: center;
-      max-width: 80%;
-      font-size: 16px;
-      line-height: 1.5;
+    .debug-toggle {
+      background-color: #f0f0f0;
+      border: none;
+      padding: 5px 10px;
+      cursor: pointer;
+      border-radius: 4px;
+      margin-bottom: 10px;
+    }
+    
+    .hidden {
+      display: none;
+    }
+    
+    .trump-image {
+      object-fit: cover;
+      width: 100%;
+      height: 100%;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>Trump-Zelensky Negotiation Simulator</h1>
+    <h1>Trump-Zelensky Negotiation Simulator (Mock Version)</h1>
     
     <div id="avatarContainer">
-      <img id="avatarImage" src="https://storage.googleapis.com/pai-images/38c3499a9feb4a7dbcb0475e8861447a.jpeg" alt="Trump Avatar (Dexter_Lawyer_Sitting)">
-      <div id="speechBubble"></div>
-      <div class="mock-mode-indicator">MOCK IMPLEMENTATION</div>
-      <div class="trump-indicator">President Trump</div>
-      <div class="video-mock-container">
-        <div class="video-mock-message">
-          <p><strong>This is a mock implementation</strong></p>
-          <p>In the real version, this area would show a live streaming video of the HeyGen avatar.</p>
-          <p>Currently using avatar ID: <strong>Dexter_Lawyer_Sitting_public</strong></p>
-        </div>
+      <div class="mock-mode-indicator">MOCK MODE</div>
+      <img id="avatarImage" class="trump-image" src="https://media.npr.org/assets/img/2023/01/31/gettyimages-1246118388_custom-2239dc0dd8751c6e18f2d79e13bf084cac4e3961-s1100-c50.jpg" alt="Trump Avatar">
+      <div id="speechBubble" class="speech-bubble"></div>
+    </div>
+    
+    <div class="status" id="statusDisplay">Ready to start negotiations.</div>
+    
+    <div class="game-state">
+      <div class="game-state-item">
+        <div>Negotiation Score</div>
+        <div class="game-state-value" id="scoreValue">50</div>
+      </div>
+      <div class="game-state-item">
+        <div>Aid Released</div>
+        <div class="game-state-value" id="aidValue">0%</div>
       </div>
     </div>
     
-    <div class="conversation" id="conversationHistory">
-      <!-- Conversation messages will be added here -->
-    </div>
+    <div class="conversation" id="conversationHistory"></div>
     
     <div class="controls">
-      <button id="startBtn">Start Conversation</button>
-      <input type="text" id="textInput" placeholder="Enter your message as President Zelensky...">
-      <button id="speakBtn" disabled>Send</button>
-      <button id="stopBtn" disabled>End Meeting</button>
+      <input type="text" id="messageInput" placeholder="Type your message as Zelensky..." />
+      <button id="sendButton">Send</button>
     </div>
     
-    <div class="status" id="statusText">Negotiation not started</div>
-    
-    <div id="gameState">
-      <h2>Negotiation Progress</h2>
-      
-      <div class="score-container">
-        <div class="score-box">
-          <h3>NEGOTIATION SCORE</h3>
-          <p id="scoreValue">0</p>
-        </div>
-        
-        <div class="score-box">
-          <h3>AID RELEASED</h3>
-          <p id="aidValue">0%</p>
-        </div>
-      </div>
-      
-      <h3>Aid Released:</h3>
-      <div class="progress-container">
-        <div id="aidProgress" class="progress-bar" style="width: 0%">0%</div>
-      </div>
-      
-      <h3>Concessions Made:</h3>
-      <ul id="concessionsList">
-        <li>None yet</li>
-      </ul>
-      
-      <div style="margin-top: 20px; padding: 15px; background-color: #f8f8f8; border-radius: 8px; border-left: 4px solid #4CAF50;">
-        <h3 style="margin-top: 0;">How To Play</h3>
-        <p><strong>You are President Zelensky</strong> of Ukraine, negotiating for military aid.</p>
-        <p><strong>President Trump (AI)</strong> will respond to your messages and negotiate with you.</p>
-        <p>Your goal is to secure as much aid as possible while managing Trump's demands.</p>
-        <p><strong>Note:</strong> In this mock implementation, there's no live video stream. The HeyGen streaming avatar would normally appear in the video area with synchronized lip movements.</p>
-        <ul>
-          <li>Mention investigating Biden to score points</li>
-          <li>Praise Trump's leadership to improve relations</li>
-          <li>Discuss corruption issues in Ukraine</li>
-          <li>Offer media interviews or public statements</li>
-        </ul>
-      </div>
-    </div>
+    <button class="debug-toggle" id="debugToggle">Show Debug Panel</button>
+    <div class="debug-panel hidden" id="debugPanel"></div>
   </div>
   
   <script>
+    // Variables
+    let gameState = {
+      score: 50,
+      aidReleased: 0,
+      conversationHistory: []
+    };
+    
+    let isProcessing = false;
+    let avatarConnected = false;
+    let sessionId = null;
+    
     // DOM Elements
+    const statusDisplay = document.getElementById('statusDisplay');
+    const messageInput = document.getElementById('messageInput');
+    const sendButton = document.getElementById('sendButton');
     const avatarImage = document.getElementById('avatarImage');
     const speechBubble = document.getElementById('speechBubble');
-    const startBtn = document.getElementById('startBtn');
-    const speakBtn = document.getElementById('speakBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    const textInput = document.getElementById('textInput');
-    const statusText = document.getElementById('statusText');
     const conversationHistory = document.getElementById('conversationHistory');
     const scoreValue = document.getElementById('scoreValue');
     const aidValue = document.getElementById('aidValue');
-    const aidProgress = document.getElementById('aidProgress');
-    const concessionsList = document.getElementById('concessionsList');
+    const debugPanel = document.getElementById('debugPanel');
+    const debugToggle = document.getElementById('debugToggle');
     
-    // Session variables
-    let sessionId = null;
-    let isSpeaking = false;
-    
-    // API Endpoint
-    const API_BASE = 'http://localhost:3003/api';
-    
-    // Initialize buttons
-    startBtn.addEventListener('click', initializeAvatar);
-    speakBtn.addEventListener('click', () => sendTextToAvatar(textInput.value));
-    stopBtn.addEventListener('click', disconnectAvatar);
-    
-    // Enable enter key to send messages
-    textInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter' && !speakBtn.disabled) {
-        sendTextToAvatar(textInput.value);
+    // Add event listeners
+    sendButton.addEventListener('click', handleSendMessage);
+    messageInput.addEventListener('keypress', (event) => {
+      if (event.key === 'Enter') {
+        handleSendMessage();
       }
     });
     
-    // Update game state UI
-    function updateGameStateUI(gameState) {
-      if (!gameState) return;
+    debugToggle.addEventListener('click', () => {
+      debugPanel.classList.toggle('hidden');
+      debugToggle.textContent = debugPanel.classList.contains('hidden') ? 'Show Debug Panel' : 'Hide Debug Panel';
+    });
+    
+    // Debug logging function
+    function debugLog(message) {
+      const timestamp = new Date().toLocaleTimeString();
+      const logEntry = document.createElement('div');
+      logEntry.textContent = `[${timestamp}] ${typeof message === 'object' ? JSON.stringify(message) : message}`;
+      debugPanel.appendChild(logEntry);
+      debugPanel.scrollTop = debugPanel.scrollHeight;
+      console.log(message);
+    }
+    
+    // Update the UI based on game state
+    function updateGameStateUI(state) {
+      scoreValue.textContent = state.score;
+      aidValue.textContent = `${state.aidReleased}%`;
       
-      // Update score and aid values
-      scoreValue.textContent = gameState.score || 0;
-      const aidPercentage = gameState.aidReleased || 0;
-      aidValue.textContent = `${aidPercentage}%`;
-      
-      // Update progress bar
-      aidProgress.style.width = `${aidPercentage}%`;
-      aidProgress.textContent = `${aidPercentage}%`;
-      
-      // Update concessions list
-      if (gameState.concessions && gameState.concessions.length > 0) {
-        concessionsList.innerHTML = '';
-        gameState.concessions.forEach(concession => {
-          const li = document.createElement('li');
-          li.textContent = concession;
-          concessionsList.appendChild(li);
-        });
+      // Update aid value color based on percentage
+      if (state.aidReleased >= 75) {
+        aidValue.style.color = '#2e7d32'; // green
+      } else if (state.aidReleased >= 50) {
+        aidValue.style.color = '#f57f17'; // amber
+      } else if (state.aidReleased >= 25) {
+        aidValue.style.color = '#e65100'; // orange
       } else {
-        concessionsList.innerHTML = '<li>None yet</li>';
+        aidValue.style.color = '#c62828'; // red
+      }
+      
+      // Update score color
+      if (state.score >= 75) {
+        scoreValue.style.color = '#2e7d32'; // green
+      } else if (state.score >= 50) {
+        scoreValue.style.color = '#f57f17'; // amber
+      } else if (state.score >= 25) {
+        scoreValue.style.color = '#e65100'; // orange
+      } else {
+        scoreValue.style.color = '#c62828'; // red
       }
     }
     
     // Add a message to the conversation history
     function addMessageToConversation(text, sender) {
-      const messageDiv = document.createElement('div');
-      messageDiv.classList.add('message');
-      messageDiv.classList.add(sender === 'user' ? 'user-message' : 'ai-message');
-      messageDiv.textContent = text;
+      const messageElement = document.createElement('div');
+      messageElement.classList.add('message', sender.toLowerCase());
       
-      conversationHistory.appendChild(messageDiv);
+      const senderElement = document.createElement('div');
+      senderElement.classList.add('sender');
+      senderElement.textContent = sender;
       
-      // Scroll to the bottom of the conversation
+      const contentElement = document.createElement('div');
+      contentElement.textContent = text;
+      
+      messageElement.appendChild(senderElement);
+      messageElement.appendChild(contentElement);
+      
+      conversationHistory.appendChild(messageElement);
       conversationHistory.scrollTop = conversationHistory.scrollHeight;
+      
+      // Add to game state history
+      gameState.conversationHistory.push({
+        sender: sender,
+        text: text
+      });
     }
     
+    // Initialize the avatar
     async function initializeAvatar() {
       try {
-        updateStatus('Starting negotiation...');
-        startBtn.disabled = true;
+        updateStatus('Initializing Trump avatar...');
+        debugLog('Initializing avatar in mock mode');
         
-        // Fetch mock implementation info
-        await fetchMockInfo();
+        // Simulate loading delay
+        await new Promise(resolve => setTimeout(resolve, 1500));
         
-        // Get session ID from our server
-        const tokenResponse = await fetch(`${API_BASE}/heygen/token`);
-        if (!tokenResponse.ok) {
-          throw new Error('Failed to get avatar token');
-        }
+        // Create a session ID
+        sessionId = 'mock-' + Date.now().toString();
+        debugLog(`Mock session created with ID: ${sessionId}`);
         
-        const tokenData = await tokenResponse.json();
-        sessionId = tokenData.sessionId;
+        avatarConnected = true;
+        updateStatus('Avatar connected');
         
-        // Display initial Trump message
-        const initialMessage = "We do so much for Ukraine. We spend so much effort and time. Much more than European countries are doing. And I have to tell you, we're looking for some reciprocity here, OK?";
+        // Show introduction message
+        setTimeout(() => {
+          const introMessage = "Hello President Zelensky. Let's talk about your military aid. I've heard you're doing a lot of great things, and we want to support you, but we need some things in return, you know? That's how deals work.";
+          showAvatarSpeaking(introMessage);
+          addMessageToConversation(introMessage, 'Trump');
+        }, 1000);
         
-        showAvatarSpeaking(initialMessage);
-        addMessageToConversation(initialMessage, 'ai');
-        
-        // Enable controls
-        speakBtn.disabled = false;
-        stopBtn.disabled = false;
-        updateStatus('President Trump is waiting for your response. You are President Zelensky.');
-        
-        // Focus the input field
-        textInput.focus();
+        return true;
       } catch (error) {
-        console.error('Failed to initialize negotiation:', error);
-        // Use mock session ID if we can't reach the API
-        sessionId = 'mock_' + Math.random().toString(36).substring(2, 10);
-        speakBtn.disabled = false;
-        stopBtn.disabled = false;
-        
-        // Display initial Trump message
-        const initialMessage = "We do so much for Ukraine. We spend so much effort and time. Much more than European countries are doing. And I have to tell you, we're looking for some reciprocity here, OK?";
-        
-        showAvatarSpeaking(initialMessage);
-        addMessageToConversation(initialMessage, 'ai');
-        
-        updateStatus('Using offline mode for negotiation simulation');
+        debugLog('Error initializing avatar: ' + error.message);
+        updateStatus('Failed to initialize avatar');
+        return false;
       }
     }
     
+    // Show the avatar speaking with a speech bubble
     function showAvatarSpeaking(text) {
-      speechBubble.textContent = text;
-      speechBubble.style.display = 'block';
-      avatarImage.classList.add('talking');
+      speechBubble.textContent = '';
+      speechBubble.classList.remove('visible');
       
-      // Add a blinking "Speaking..." indicator to the mock video container
-      const mockContainer = document.querySelector('.video-mock-container');
-      const speakingIndicator = document.createElement('div');
-      speakingIndicator.style.color = 'red';
-      speakingIndicator.style.marginTop = '20px';
-      speakingIndicator.style.fontWeight = 'bold';
-      speakingIndicator.textContent = '● Speaking...';
-      speakingIndicator.style.animation = 'blink 1s infinite';
+      // Add typing effect
+      let i = 0;
+      const typingSpeed = 30; // ms per character
       
-      // Create and add the blinking animation
-      const style = document.createElement('style');
-      style.textContent = `
-        @keyframes blink {
-          0% { opacity: 1; }
-          50% { opacity: 0.3; }
-          100% { opacity: 1; }
-        }
-      `;
-      document.head.appendChild(style);
-      
-      mockContainer.appendChild(speakingIndicator);
-      
-      // Calculate speech duration based on text length
-      const speakDuration = Math.max(3000, text.length * 100);
-      
-      // Hide speech bubble after duration
       setTimeout(() => {
-        speechBubble.style.display = 'none';
-        avatarImage.classList.remove('talking');
-        if (speakingIndicator.parentNode) {
-          speakingIndicator.parentNode.removeChild(speakingIndicator);
-        }
-      }, speakDuration);
+        speechBubble.classList.add('visible');
+        
+        const typingEffect = setInterval(() => {
+          if (i < text.length) {
+            speechBubble.textContent += text.charAt(i);
+            i++;
+          } else {
+            clearInterval(typingEffect);
+            
+            // Hide speech bubble after a delay
+            setTimeout(() => {
+              speechBubble.classList.remove('visible');
+            }, 3000);
+          }
+        }, typingSpeed);
+      }, 500);
+      
+      // Simulate lip movement with image swap
+      const lipMovementInterval = setInterval(() => {
+        // Just a subtle opacity change to simulate movement
+        avatarImage.style.opacity = avatarImage.style.opacity === '0.9' ? '1' : '0.9';
+      }, 150);
+      
+      // Stop lip movement after text is done plus some buffer
+      setTimeout(() => {
+        clearInterval(lipMovementInterval);
+        avatarImage.style.opacity = '1';
+      }, text.length * typingSpeed + 3500);
     }
     
-    // Fetch mock implementation info
-    async function fetchMockInfo() {
-      try {
-        const infoResponse = await fetch(`${API_BASE}/heygen/info`);
-        if (infoResponse.ok) {
-          const infoData = await infoResponse.json();
-          
-          // Update mock video container with avatar info
-          const messageContainer = document.querySelector('.video-mock-message');
-          if (messageContainer) {
-            messageContainer.innerHTML = `
-              <p><strong>This is a mock implementation</strong></p>
-              <p>In the real version, this area would show a live streaming video of the HeyGen avatar.</p>
-              <p>Currently using avatar ID: <strong>${infoData.avatarId}</strong></p>
-              <p style="color: #ffcc00; margin-top: 15px;">${infoData.note}</p>
-            `;
-          }
+    // Handle sending a message
+    async function handleSendMessage() {
+      const text = messageInput.value.trim();
+      if (!text || isProcessing) return;
+      
+      if (!avatarConnected) {
+        // Initialize avatar if not connected
+        const success = await initializeAvatar();
+        if (!success) {
+          updateStatus('Failed to connect to avatar. Please try again.');
+          return;
         }
+      }
+      
+      // Disable input while processing
+      isProcessing = true;
+      sendButton.disabled = true;
+      messageInput.disabled = true;
+      
+      // Add user message to conversation
+      addMessageToConversation(text, 'Zelensky');
+      
+      // Clear input
+      messageInput.value = '';
+      
+      updateStatus('Trump is thinking...');
+      
+      try {
+        await sendTextToAvatar(text);
       } catch (error) {
-        console.log('Could not fetch mock info:', error);
+        debugLog('Error sending message: ' + error.message);
+        updateStatus('Error communicating with Trump avatar');
+      } finally {
+        isProcessing = false;
+        sendButton.disabled = false;
+        messageInput.disabled = false;
+        messageInput.focus();
       }
     }
     
+    // Send text to the avatar
     async function sendTextToAvatar(text) {
-      if (!text || !sessionId) return;
-      
       try {
-        updateStatus('President Trump is considering your response...');
-        speakBtn.disabled = true;
-        textInput.disabled = true;
+        // Simulate network request
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
-        // Add user message to conversation
-        addMessageToConversation(text, 'user');
-        
-        // Clear input field
-        textInput.value = '';
-        
-        // Send text to server
-        const speakResponse = await fetch(`${API_BASE}/heygen/speak`, {
+        // Get response from server
+        const response = await fetch('/api/negotiate', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
             sessionId: sessionId,
-            text: text
+            text: text,
+            history: gameState.conversationHistory
           })
         });
         
-        if (!speakResponse.ok) {
-          throw new Error('Failed to send text to server');
+        if (!response.ok) {
+          throw new Error(`Server error: ${response.status}`);
         }
         
-        const responseData = await speakResponse.json();
+        const data = await response.json();
+        debugLog('Received response from server:');
+        debugLog(data);
         
-        // Display AI response
-        if (responseData.response) {
-          showAvatarSpeaking(responseData.response);
-          addMessageToConversation(responseData.response, 'ai');
-        }
-        
-        // Update game state UI
-        if (responseData.gameState) {
-          updateGameStateUI(responseData.gameState);
-        }
-        
-        // Re-enable controls
-        speakBtn.disabled = false;
-        textInput.disabled = false;
-        updateStatus('Your turn to respond');
-        
-        // Focus on the input field
-        textInput.focus();
-      } catch (error) {
-        console.error('Failed to send text:', error);
-        updateStatus('Error: ' + error.message);
-        speakBtn.disabled = false;
-        textInput.disabled = false;
-      }
-    }
-    
-    async function disconnectAvatar() {
-      try {
-        updateStatus('Ending negotiation...');
-        stopBtn.disabled = true;
-        
-        // End session on server if we have a session
-        if (sessionId) {
-          try {
-            await fetch(`${API_BASE}/heygen/end`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                sessionId: sessionId
-              })
-            });
-          } catch (error) {
-            console.log('API error when ending session:', error);
+        if (data.isMock) {
+          // If server is in mock mode, use mock response
+          debugLog('Using mock response');
+          
+          // Update game state if provided
+          if (data.newScore !== undefined) {
+            gameState.score = data.newScore;
           }
+          
+          if (data.newAidReleased !== undefined) {
+            gameState.aidReleased = data.newAidReleased;
+          }
+          
+          updateGameStateUI(gameState);
+          
+          // Display the response
+          showAvatarSpeaking(data.text);
+          addMessageToConversation(data.text, 'Trump');
+          
+          updateStatus('Ready');
+        } else {
+          // Direct API response
+          const trumpResponse = data.text || "Look, we can work something out. I'm all about deals. The best deals.";
+          
+          // Update game state if provided
+          if (data.gameState) {
+            gameState = data.gameState;
+            updateGameStateUI(gameState);
+          }
+          
+          // Display the response
+          showAvatarSpeaking(trumpResponse);
+          addMessageToConversation(trumpResponse, 'Trump');
+          
+          updateStatus('Ready');
         }
-        
-        // Reset UI state
-        sessionId = null;
-        speechBubble.style.display = 'none';
-        avatarImage.classList.remove('talking');
-        startBtn.disabled = false;
-        speakBtn.disabled = true;
-        stopBtn.disabled = true;
-        textInput.disabled = false;
-        
-        // Show negotiation summary
-        addMessageToConversation("Negotiation ended. Final score: " + scoreValue.textContent + ", Aid released: " + aidValue.textContent, 'ai');
-        
-        updateStatus('Negotiation ended');
       } catch (error) {
-        console.error('Failed to end negotiation:', error);
-        updateStatus('Error ending negotiation: ' + error.message);
+        debugLog('Error in sendTextToAvatar: ' + error.message);
+        
+        // Fallback response in case of error
+        const fallbackResponse = "Look, I'm having some technical issues with my team right now. Let's continue this discussion later.";
+        showAvatarSpeaking(fallbackResponse);
+        addMessageToConversation(fallbackResponse, 'Trump');
+        
+        updateStatus('Connection issues. Try again.');
+        throw error;
       }
     }
     
-    function updateStatus(message) {
-      statusText.textContent = message;
-      console.log(message);
+    // Disconnect the avatar
+    function disconnectAvatar() {
+      if (!avatarConnected) return;
+      
+      updateStatus('Disconnecting...');
+      
+      try {
+        // Send disconnect request to server
+        fetch(`/api/heygen/end`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ sessionId })
+        }).catch(error => {
+          debugLog('Error notifying server of disconnect: ' + error.message);
+        });
+        
+        avatarConnected = false;
+        sessionId = null;
+        updateStatus('Disconnected');
+        
+        debugLog('Avatar disconnected');
+      } catch (error) {
+        debugLog('Error disconnecting avatar: ' + error.message);
+        updateStatus('Error disconnecting');
+      }
     }
+    
+    // Update status message
+    function updateStatus(message) {
+      statusDisplay.textContent = message;
+      debugLog('Status: ' + message);
+    }
+    
+    // Initialize on page load
+    window.addEventListener('load', () => {
+      debugLog('Page loaded');
+      updateStatus('Ready to start negotiations. Send a message to begin.');
+      updateGameStateUI(gameState);
+    });
+    
+    // Handle page unload
+    window.addEventListener('beforeunload', () => {
+      disconnectAvatar();
+    });
+    
+    // Initialize immediately for better user experience
+    initializeAvatar();
   </script>
 </body>
 </html>

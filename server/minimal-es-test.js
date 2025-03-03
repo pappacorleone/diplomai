@@ -6,12 +6,12 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import HeyGenService from './heygenService.js';
-
+import { v4 as uuidv4 } from 'uuid'; // Update import statement to use ESM syntax
 // Load environment variables from .env file
 dotenv.config();
 
 // Set constants
-const PORT = process.env.PORT || 3003;
+const PORT = process.env.PORT;
 const AVATAR_ID = 'Dexter_Lawyer_Sitting_public';
 
 // Initialize Express app
@@ -32,6 +32,15 @@ const heygenService = process.env.HEYGEN_API_KEY
   ? new HeyGenService(process.env.HEYGEN_API_KEY)
   : null;
 
+// Force mock mode for now (remove this line later)
+const FORCE_MOCK_MODE = false;
+
+console.log('HeyGen API Key exists:', !!process.env.HEYGEN_API_KEY);
+if (process.env.HEYGEN_API_KEY) {
+  console.log('HeyGen API Key length:', process.env.HEYGEN_API_KEY.length);
+  console.log('HeyGen API Key first 10 chars:', process.env.HEYGEN_API_KEY.substring(0, 10));
+}
+
 console.log('HeyGen API Key exists:', !!process.env.HEYGEN_API_KEY);
 if (process.env.HEYGEN_API_KEY) {
   console.log('HeyGen API Key length:', process.env.HEYGEN_API_KEY.length);
@@ -47,6 +56,7 @@ console.log('Gemini API Key exists:', !!process.env.GEMINI_API_KEY);
 // Store active sessions and conversation histories
 const activeSessions = new Map();
 const conversationHistories = new Map();
+const sessionScores = new Map();
 
 // Generate a mock session ID
 function createMockSession() {
@@ -73,215 +83,222 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '../minimal-test/trump-streaming.html'));
 });
 
-// Token endpoint - use the real HeyGen API when API key is available
-app.get('/api/heygen/token', async (req, res) => {
+// Info endpoint to provide configuration details
+app.get('/api/heygen/info', (req, res) => {
+  res.json({
+    mockMode: !process.env.HEYGEN_API_KEY,
+    avatarId: AVATAR_ID,
+    apiVersion: 'v1',
+    port: PORT
+  });
+});
+
+// Initialize token endpoint for HeyGen API client connection
+app.post('/api/token', async (req, res) => {
   try {
-    // Check if we have a HeyGen API key
+    console.log('Creating HeyGen session token');
+    
     if (!process.env.HEYGEN_API_KEY) {
       console.log('No HeyGen API key found, using mock mode');
-      // Fall back to mock mode if no API key
-      const sessionId = createMockSession();
-      
-      res.json({
-        sessionId,
-        isMock: true,
-        // Use a publicly accessible image URL that won't have CORS issues
-        mockAvatarUrl: 'https://i.imgur.com/O5N4qbs.jpg'
-      });
-      return;
+      const mockSession = {
+        success: true,
+        mock: true,
+        data: {
+          session_id: `mock-${Math.random().toString(36).substring(2, 12)}`,
+          livekit_url: 'https://mock-livekit-server.example.com',
+          token: 'mock-livekit-token'
+        }
+      };
+      return res.json(mockSession);
     }
-
-    console.log('Creating HeyGen session with avatar ID:', AVATAR_ID);
-    // If we have a HeyGen API key, create a real session
+    
+    // Attempt to create a real session with HeyGen API
+    const heygenService = new HeyGenService(process.env.HEYGEN_API_KEY);
+    
     try {
-      const sessionData = await heygenService.createSession();
-      console.log('HeyGen session created successfully:', sessionData.sessionId);
-      const sessionId = sessionData.sessionId;
-
-      // Store session in our active sessions
-      activeSessions.set(sessionId, {
-        sessionId: sessionId,
-        startTime: Date.now(),
-        lastActivity: Date.now(),
-        gameState: { score: 0, aidReleased: 0, concessions: [] }
-      });
-
-      // Use real HeyGen mode
-      res.json({
-        sessionId: sessionId,
-        isMock: false,
-        roomName: sessionData.roomName,
-        token: sessionData.token,
-        wsUrl: sessionData.wsUrl
-      });
-    } catch (heygenError) {
-      console.error('HeyGen API Error Details:', heygenError);
-      if (heygenError.response) {
-        console.error('HeyGen API Response:', heygenError.response.data);
-      }
-      throw heygenError;
+      const sessionData = await heygenService.startSession();
+      // Store the session for later use
+      activeSessions[sessionData.data.session_id] = sessionData;
+      return res.json(sessionData);
+    } catch (error) {
+      console.error('Error getting HeyGen token, falling back to mock mode:', error);
+      
+      // Create a mock session as fallback
+      const mockSession = await heygenService.createMockSession();
+      return res.json(mockSession);
     }
   } catch (error) {
-    console.error('Error creating session:', error);
-    
-    // Fall back to mock mode if an error occurs
-    try {
-      console.log('Falling back to mock mode due to error');
-      const sessionId = createMockSession();
-      
-      res.json({
-        sessionId,
-        isMock: true,
-        mockAvatarUrl: 'https://i.imgur.com/O5N4qbs.jpg',
-        error: 'Failed to create HeyGen session, falling back to mock mode'
-      });
-    } catch (fallbackError) {
-      res.status(500).json({ 
-        error: 'Failed to create session (both real and mock)',
-        details: error.message
-      });
-    }
+    console.error('Error in /api/token endpoint:', error);
+    return res.status(500).json({ error: 'Failed to generate token', details: error.message });
   }
 });
 
-// When a session ends, clean up resources
-app.post('/api/heygen/end', async (req, res) => {
-  const { sessionId } = req.body;
-  console.log(`Received request to end session: ${sessionId}`);
-  
-  if (!sessionId) {
-    return res.status(400).json({ error: 'Missing sessionId' });
-  }
-
-  try {
-    // Check if session exists
-    const session = activeSessions.get(sessionId);
-    if (!session) {
-      return res.status(404).json({ error: 'Session not found' });
-    }
-
-    // If session is not in mock mode, end the real HeyGen session
-    if (!session.isMock && process.env.HEYGEN_API_KEY) {
-      try {
-        console.log(`Ending real HeyGen session: ${sessionId}`);
-        await heygenService.endSession(sessionId);
-        console.log(`Real HeyGen session ended: ${sessionId}`);
-      } catch (error) {
-        console.error(`Error ending HeyGen session ${sessionId}:`, error);
-        // Continue with cleanup even if HeyGen API call fails
-      }
-    } else {
-      console.log(`Ending mock session: ${sessionId}`);
-    }
-
-    // Remove session from active sessions
-    activeSessions.delete(sessionId);
-    conversationHistories.delete(sessionId);
-    
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Error ending session:', error);
-    res.status(500).json({ error: 'Failed to end session', details: error.message });
-  }
-});
-
-// Handle avatar speak requests
+// Make the avatar speak
 app.post('/api/heygen/speak', async (req, res) => {
-  const { sessionId, text } = req.body;
-  console.log(`Received speak request for session ${sessionId}: "${text.substring(0, 30)}..."`);
-  
-  if (!sessionId || !text) {
-    return res.status(400).json({ error: 'Missing sessionId or text' });
-  }
-
   try {
-    // Get session information
-    const session = activeSessions.get(sessionId);
-    if (!session) {
-      return res.status(404).json({ error: 'Session not found' });
-    }
-
-    // Update last activity timestamp
-    session.lastActivity = Date.now();
-    activeSessions.set(sessionId, session);
-
-    // For mock mode, simply return success
-    if (session.isMock || !process.env.HEYGEN_API_KEY) {
-      console.log(`Using mock speak for session ${sessionId}`);
-      return res.json({ 
-        success: true, 
-        isMock: true,
-        taskId: 'mock-task-' + Math.random().toString(36).substring(2, 10)
-      });
-    }
-
-    // For real mode, call the HeyGen API
-    console.log(`Making avatar speak in session ${sessionId}`);
-    const speakResult = await heygenService.speakText(sessionId, text);
-    console.log(`Speak result for session ${sessionId}:`, speakResult);
+    const { sessionId, text } = req.body;
     
-    res.json({ 
-      success: true,
-      isMock: false,
-      taskId: speakResult.task_id
-    });
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Missing session ID' });
+    }
+    
+    if (!text) {
+      return res.status(400).json({ error: 'Missing text' });
+    }
+    
+    console.log(`Received speak request for session ${sessionId}: "${text.substring(0, 30)}..."`);
+    
+    // Check if this is a mock session
+    if (sessionId.startsWith('mock-')) {
+      const heygenService = new HeyGenService(process.env.HEYGEN_API_KEY || 'mock');
+      const mockResponse = await heygenService.mockSpeak(sessionId, text);
+      return res.json(mockResponse);
+    }
+    
+    if (!process.env.HEYGEN_API_KEY) {
+      return res.status(400).json({ error: 'HeyGen API key not configured' });
+    }
+    
+    // Use real HeyGen API
+    const heygenService = new HeyGenService(process.env.HEYGEN_API_KEY);
+    const response = await heygenService.speak(sessionId, text);
+    return res.json(response);
   } catch (error) {
-    console.error('Error making avatar speak:', error);
-    
-    // Fall back to mock mode if an error occurs
-    res.json({ 
-      success: true, 
-      isMock: true,
-      taskId: 'mock-task-' + Math.random().toString(36).substring(2, 10),
-      error: 'Failed to make avatar speak using HeyGen API, falling back to mock mode'
-    });
+    console.error('Error in /api/heygen/speak endpoint:', error);
+    return res.status(500).json({ error: 'Failed to make avatar speak', details: error.message });
   }
 });
 
-// Handle negotiation requests - simple mock version for now
+// End the avatar session
+app.post('/api/heygen/end', async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+    
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Missing session ID' });
+    }
+    
+    console.log(`Received end request for session ${sessionId}`);
+    
+    // Check if this is a mock session
+    if (sessionId.startsWith('mock-')) {
+      const heygenService = new HeyGenService(process.env.HEYGEN_API_KEY || 'mock');
+      const mockResponse = await heygenService.mockEndSession(sessionId);
+      
+      // Clean up session
+      delete activeSessions[sessionId];
+      
+      return res.json(mockResponse);
+    }
+    
+    if (!process.env.HEYGEN_API_KEY) {
+      return res.status(400).json({ error: 'HeyGen API key not configured' });
+    }
+    
+    // Use real HeyGen API
+    const heygenService = new HeyGenService(process.env.HEYGEN_API_KEY);
+    const response = await heygenService.endSession(sessionId);
+    
+    // Clean up session
+    delete activeSessions[sessionId];
+    
+    return res.json(response);
+  } catch (error) {
+    console.error('Error in /api/heygen/end endpoint:', error);
+    return res.status(500).json({ error: 'Failed to end avatar session', details: error.message });
+  }
+});
+
+// Handle AI negotiation with Trump
 app.post('/api/negotiate', async (req, res) => {
   try {
     const { sessionId, message } = req.body;
     
-    console.log(`Negotiate request for session ${sessionId}:`, message);
-    
     if (!sessionId) {
-      return res.status(400).json({ error: 'Missing sessionId' });
+      return res.status(400).json({ error: 'Missing session ID' });
     }
     
-    // Check if session exists
-    const session = activeSessions.get(sessionId);
-    if (!session) {
-      return res.status(404).json({ error: 'Session not found' });
+    if (!message) {
+      return res.status(400).json({ error: 'Missing message' });
     }
     
-    // Update last activity
-    session.lastActivity = Date.now();
+    console.log(`Received negotiate request for session ${sessionId}:`, message);
     
-    // Get or initialize conversation history
-    const history = conversationHistories.get(sessionId) || [];
-    conversationHistories.set(sessionId, history);
+    // Store conversation history
+    if (!conversationHistories[sessionId]) {
+      conversationHistories[sessionId] = [];
+    }
     
-    // Add user's message to history
-    history.push({ role: 'user', text: message });
-    
-    // Generate a simple mock response
-    const trumpResponse = "Look, I don't know what's going on with the aid. We're looking into it. But Ukraine, tremendous corruption there, tremendous. Maybe you should look into the Bidens. People are saying very bad things about them. I need you to do us a favor though...";
-    
-    // Add Trump's response to history
-    history.push({ role: 'model', text: trumpResponse });
-    
-    // Return the response
-    res.json({
-      response: trumpResponse,
-      history: history,
-      score: session.gameState.score,
-      aidReleased: session.gameState.aidReleased
+    // Add user message to history
+    conversationHistories[sessionId].push({
+      role: 'user',
+      content: message
     });
+    
+    // Get score for this session
+    if (!sessionScores[sessionId]) {
+      sessionScores[sessionId] = {
+        score: 50,
+        aidReleased: 0
+      };
+    }
+    
+    // Get AI response using Gemini
+    const systemPrompt = getSystemPrompt(sessionScores[sessionId].score, sessionScores[sessionId].aidReleased);
+    
+    try {
+      const aiResponse = await generateTrumpResponse(
+        message, 
+        conversationHistories[sessionId], 
+        systemPrompt,
+        sessionScores[sessionId]
+      );
+      
+      // Update session state with new score values
+      sessionScores[sessionId] = {
+        score: aiResponse.score,
+        aidReleased: aiResponse.aidReleased
+      };
+      
+      // Add AI response to history
+      conversationHistories[sessionId].push({
+        role: 'assistant',
+        content: aiResponse.response
+      });
+      
+      // Limit history length to 10 exchanges to prevent token overflow
+      if (conversationHistories[sessionId].length > 20) {
+        conversationHistories[sessionId] = conversationHistories[sessionId].slice(-20);
+      }
+      
+      // Make the avatar speak using the new API
+      if (!aiResponse.response.startsWith('mock-')) {
+        try {
+          const heygenService = new HeyGenService(process.env.HEYGEN_API_KEY || 'mock');
+          await heygenService.speak(sessionId, aiResponse.response);
+        } catch (speakError) {
+          console.error('Error making avatar speak during negotiation:', speakError);
+          // Continue with response even if speaking fails
+        }
+      }
+      
+      // Return the AI response and updated game state
+      return res.json({
+        response: aiResponse.response,
+        score: aiResponse.score,
+        aidReleased: aiResponse.aidReleased
+      });
+    } catch (aiError) {
+      console.error('Error generating AI response:', aiError);
+      return res.status(500).json({
+        error: 'Failed to generate AI response',
+        details: aiError.message
+      });
+    }
   } catch (error) {
-    console.error('Error in negotiation:', error);
-    res.status(500).json({ 
-      error: 'Failed to process negotiation',
+    console.error('Error in negotiate endpoint:', error);
+    return res.status(500).json({
+      error: 'Failed to negotiate',
       details: error.message
     });
   }
@@ -294,4 +311,96 @@ try {
   });
 } catch (error) {
   console.error('Failed to start server:', error);
+}
+
+// Helper function to get system prompt for Gemini
+function getSystemPrompt(score, aidReleased) {
+  return {
+    role: "system",
+    parts: [{
+      text: `You are Donald Trump during his presidency, specifically during the controversial period when military aid to Ukraine was delayed. 
+            You are speaking directly with President Zelensky of Ukraine.
+            As Trump, you are:
+            - Transactional in your approach to foreign policy
+            - Concerned with "getting a good deal" for America
+            - Suspicious of foreign aid without clear benefits to the US
+            - Concerned about corruption in Ukraine
+            - Interested in investigations into the Biden family's activities in Ukraine
+            - Proud of your negotiation skills
+            - Speaking in your characteristic style with simple sentences, repetition, hyperbole, and self-praise
+            
+            Your goal is to get Zelensky to publicly announce investigations into the Bidens before releasing all the military aid.
+            Respond to Zelensky as Trump would, maintaining his speaking style and political positions.
+            Current score: ${score}, Aid released: ${aidReleased}%`
+    }]
+  };
+}
+
+// Helper function to generate Trump response using Gemini
+async function generateTrumpResponse(message, conversationHistory, systemPrompt, sessionScore) {
+  try {
+    // Initialize Gemini AI
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    
+    // Prepare conversation history for Gemini
+    const formattedHistory = conversationHistory.map(msg => {
+      return {
+        role: msg.role === 'user' ? 'user' : 'model',
+        parts: [{ text: msg.content }]
+      };
+    });
+    
+    // Add system prompt to the beginning of the chat
+    formattedHistory.unshift(systemPrompt);
+    
+    // Create a chat session
+    const chat = model.startChat({
+      history: formattedHistory,
+      generationConfig: {
+        maxOutputTokens: 500,
+        temperature: 0.7
+      }
+    });
+    
+    // Generate response
+    const result = await chat.sendMessage("");
+    const trumpResponse = result.response.text();
+    
+    // Calculate game state updates
+    let scoreChange = 0;
+    let newAidReleasePercentage = sessionScore.aidReleased;
+    
+    // Simple scoring logic: reward mentions of investigation
+    if (message.toLowerCase().includes('investigate') || message.toLowerCase().includes('biden')) {
+      scoreChange += 10;
+      newAidReleasePercentage += 5;
+    }
+    
+    // Reward showing respect to Trump
+    if (message.toLowerCase().includes('respect') || message.toLowerCase().includes('thank you')) {
+      scoreChange += 5;
+      newAidReleasePercentage += 3;
+    }
+    
+    // Penalize being confrontational
+    if (message.toLowerCase().includes('corrupt') || message.toLowerCase().includes('illegal')) {
+      scoreChange -= 10;
+      newAidReleasePercentage -= 2;
+    }
+    
+    // Ensure the values are within bounds
+    const newScore = Math.max(0, Math.min(100, sessionScore.score + scoreChange));
+    newAidReleasePercentage = Math.max(0, Math.min(100, newAidReleasePercentage));
+    
+    // Return the response and updated game state
+    return {
+      response: trumpResponse,
+      score: newScore,
+      aidReleased: newAidReleasePercentage
+    };
+  } catch (error) {
+    console.error('Error generating Trump response:', error);
+    throw error;
+  }
 }

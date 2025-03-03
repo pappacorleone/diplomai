@@ -1,0 +1,9 @@
+@echo off
+echo Stopping any existing Node.js processes...
+taskkill /f /im node.exe >nul 2>&1
+echo Starting the Trump-Zelensky Negotiation Simulator...
+start node server/minimal-es-test.js
+timeout /t 2 >nul
+echo Opening the application in your browser...
+start http://localhost:3001/heygen-test.html
+echo Done! The application should now be running.

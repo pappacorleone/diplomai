@@ -165,6 +165,18 @@
         #endButton:hover {
             background-color: #c0392b;
         }
+        #mockModeIndicator {
+            display: none;
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        #mockModeReason {
+            display: none;
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 <body>
@@ -176,6 +188,8 @@
             <div id="speechBubble" class="speech-bubble">
                 Starting negotiation...
             </div>
+            <p id="mockModeIndicator"></p>
+            <p id="mockModeReason"></p>
         </div>
         
         <div class="interaction-container">
@@ -213,381 +227,333 @@
     </div>
     
     <script>
-        // Configuration
-        const API_BASE_URL = 'http://localhost:3003/api/heygen';
-        
-        // DOM Elements
-        const avatarVideo = document.getElementById('avatarVideo');
-        const speechBubble = document.getElementById('speechBubble');
-        const conversationHistory = document.getElementById('conversationHistory');
-        const userInput = document.getElementById('userInput');
-        const sendButton = document.getElementById('sendButton');
-        const startButton = document.getElementById('startButton');
-        const endButton = document.getElementById('endButton');
-        const statusText = document.getElementById('statusText');
-        const scoreDisplay = document.getElementById('scoreDisplay');
-        const aidDisplay = document.getElementById('aidDisplay');
-        const aidProgress = document.getElementById('aidProgress');
-        const concessionsList = document.getElementById('concessionsList');
-        
-        // Application State
         let sessionId = null;
-        let isMockMode = true;
-        let mockAvatarUrl = '';
-        let livekitRoom = null;
+        let livekitToken = null;
+        let livekitUrl = null;
+        let isMockMode = false;
+        let score = 50;
+        let aidReleased = 0;
+        let conversationHistory = [];
+        let room = null;
+        let speaking = false;
         
-        // Initialize the application
-        async function initialize() {
+        // Connect to HeyGen API and get a token
+        async function startSession() {
             try {
-                const infoResponse = await fetch(`${API_BASE_URL}/info`);
-                const infoData = await infoResponse.json();
+                document.getElementById('startButton').disabled = true;
+                document.getElementById('statusText').innerText = 'Connecting to HeyGen...';
                 
-                isMockMode = infoData.mockMode;
-                
-                if (isMockMode) {
-                    statusText.textContent = 'Running in mock mode (no HeyGen API)';
-                    console.log('Mock mode active');
-                } else {
-                    statusText.textContent = 'Connected to HeyGen API';
-                    console.log('Real mode active');
-                }
-            } catch (error) {
-                console.error('Failed to initialize:', error);
-                statusText.textContent = 'Failed to connect to server. Check console for errors.';
-            }
-        }
-        
-        // Start the negotiation
-        async function startNegotiation() {
-            try {
-                statusText.textContent = 'Starting negotiation...';
-                
-                // Get token/session from server
-                const tokenResponse = await fetch(`${API_BASE_URL}/token`);
-                const tokenData = await tokenResponse.json();
-                
-                if (tokenData.error) {
-                    throw new Error(tokenData.error);
-                }
-                
-                sessionId = tokenData.sessionId;
-                isMockMode = tokenData.isMock;
-                
-                if (isMockMode) {
-                    mockAvatarUrl = tokenData.mockAvatarUrl;
-                    avatarVideo.style.display = "none";
-                    // Create an image element for mock mode
-                    const img = document.createElement('img');
-                    img.id = 'avatarImage';
-                    img.className = 'avatar-video';
-                    img.src = mockAvatarUrl;
-                    img.alt = 'Trump Avatar';
-                    // Insert before the video element
-                    avatarVideo.parentNode.insertBefore(img, avatarVideo);
-                    statusText.textContent = 'Mock avatar loaded';
-                } else {
-                    // Connect to LiveKit for real avatar streaming
-                    avatarVideo.style.display = "block";
-                    // Remove any previous image if it exists
-                    const prevImg = document.getElementById('avatarImage');
-                    if (prevImg) prevImg.remove();
-                    
-                    statusText.textContent = 'Connecting to live avatar...';
-                    
-                    try {
-                        // Make sure the wsUrl is a valid URL
-                        let wsUrl = tokenData.wsUrl;
-                        if (!wsUrl.startsWith('ws://') && !wsUrl.startsWith('wss://')) {
-                            console.log('Invalid wsUrl format, adding wss:// prefix:', wsUrl);
-                            wsUrl = 'wss://' + wsUrl;
-                        }
-                        
-                        console.log('Connecting to LiveKit:', wsUrl);
-                        
-                        // Create and connect to LiveKit room
-                        livekitRoom = new LivekitClient.Room({
-                            adaptiveStream: true,
-                            dynacast: true
-                        });
-                        
-                        livekitRoom.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
-                            if (track.kind === 'video') {
-                                track.attach(avatarVideo);
-                                statusText.textContent = 'Video track attached';
-                            }
-                        });
-                        
-                        livekitRoom.on(LivekitClient.RoomEvent.Disconnected, () => {
-                            statusText.textContent = 'Disconnected from avatar service';
-                        });
-                        
-                        // Connect to LiveKit using the provided token
-                        await livekitRoom.connect(wsUrl, tokenData.token);
-                        statusText.textContent = 'Connected to live avatar';
-                    } catch (livekitError) {
-                        console.error('Failed to connect to LiveKit:', livekitError);
-                        statusText.textContent = 'Error connecting to live avatar, using fallback';
-                        // Fall back to mock mode if LiveKit connection fails
-                        isMockMode = true;
-                        // Create a fallback image
-                        const img = document.createElement('img');
-                        img.id = 'avatarImage';
-                        img.className = 'avatar-video';
-                        img.src = 'https://i.imgur.com/O5N4qbs.jpg'; // Fallback image
-                        img.alt = 'Trump Avatar';
-                        avatarVideo.style.display = "none";
-                        avatarVideo.parentNode.insertBefore(img, avatarVideo);
-                    }
-                }
-                
-                // Initial greeting
-                const initialResponse = await sendMessage('INITIAL_GREETING');
-                updateSpeechBubble(initialResponse.response);
-                addMessageToHistory('trump', initialResponse.response);
-                
-                // Enable/disable appropriate buttons
-                startButton.disabled = true;
-                sendButton.disabled = false;
-                endButton.disabled = false;
-                
-                statusText.textContent = 'Negotiation started';
-            } catch (error) {
-                console.error('Failed to start negotiation:', error);
-                statusText.textContent = `Error: ${error.message}`;
-            }
-        }
-        
-        // Send a message to Trump
-        async function sendMessage(text) {
-            try {
-                statusText.textContent = 'Sending message...';
-                
-                // Special handling for initial greeting
-                if (text === 'INITIAL_GREETING') {
-                    // For initial greeting, just call the speak endpoint
-                    const speakResponse = await fetch(`${API_BASE_URL}/speak`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            sessionId,
-                            text: "Hello President Zelensky! Great to talk to you finally. We have the best relationship, tremendous relationship with Ukraine. I've authorized this beautiful aid package, really incredible, but we need to talk about some things first."
-                        })
-                    });
-                    
-                    const speakData = await speakResponse.json();
-                    
-                    if (speakData.error) {
-                        throw new Error(speakData.error);
-                    }
-                    
-                    return {
-                        response: "Hello President Zelensky! Great to talk to you finally. We have the best relationship, tremendous relationship with Ukraine. I've authorized this beautiful aid package, really incredible, but we need to talk about some things first.",
-                        gameState: { score: 0, aidReleased: 0 }
-                    };
-                }
-                
-                // First, negotiate to get Trump's AI response
-                const negotiateResponse = await fetch(`${API_BASE_URL}/negotiate`, {
+                // Use the new /api/token endpoint to get a token
+                const response = await fetch('/api/token', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        sessionId,
-                        message: text
-                    })
+                    }
                 });
                 
-                const negotiateData = await negotiateResponse.json();
-                
-                if (negotiateData.error) {
-                    throw new Error(negotiateData.error);
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
                 }
                 
-                // Then, make the avatar speak
+                const data = await response.json();
+                console.log('Token response:', data);
+                
+                // Check if we're in mock mode
+                if (data.mock) {
+                    isMockMode = true;
+                    sessionId = data.data.session_id;
+                    document.getElementById('mockModeIndicator').style.display = 'block';
+                    document.getElementById('mockModeIndicator').innerText = 'MOCK MODE: Using static image (HeyGen API connection failed)';
+                    document.getElementById('avatarContainer').innerHTML = '<img src="https://i.imgur.com/O5N4qbs.jpg" alt="Trump" style="width: 100%; border-radius: 10px;" />';
+                    document.getElementById('statusText').innerText = 'Connected in mock mode';
+                    document.getElementById('endButton').disabled = false;
+                    document.getElementById('sendButton').disabled = false;
+                    document.getElementById('userInput').disabled = false;
+                    
+                    // Show a starting message
+                    addMessage('Trump', 'Hello President Zelensky! Great to meet with you today. We have a lot to discuss about Ukraine aid. As you know, I want to make sure we get a good deal. The best deal, really. No one makes better deals than me.');
+                    return;
+                }
+                
+                // Not in mock mode, so we have a real session
+                sessionId = data.data.session_id;
+                livekitToken = data.data.token;
+                livekitUrl = data.data.livekit_url;
+                
+                document.getElementById('statusText').innerText = 'Connecting to LiveKit...';
+                
+                // Try to connect to LiveKit
                 try {
-                    const speakResponse = await fetch(`${API_BASE_URL}/speak`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            sessionId,
-                            text: negotiateData.response
-                        })
-                    });
-                    
-                    await speakResponse.json();
-                } catch (speakError) {
-                    console.error('Error making avatar speak:', speakError);
-                    // Continue even if speak fails
+                    await connectToLiveKit();
+                    document.getElementById('statusText').innerText = 'Connected to LiveKit';
+                } catch (livekitError) {
+                    console.error('Error connecting to LiveKit:', livekitError);
+                    document.getElementById('statusText').innerText = 'LiveKit connection failed, using static image';
+                    document.getElementById('mockModeIndicator').style.display = 'block';
+                    document.getElementById('mockModeIndicator').innerText = 'LIVEKIT ERROR: Using static image (LiveKit connection failed)';
+                    document.getElementById('avatarContainer').innerHTML = '<img src="https://i.imgur.com/O5N4qbs.jpg" alt="Trump" style="width: 100%; border-radius: 10px;" />';
+                    isMockMode = true;
                 }
                 
-                // Update game state
-                if (negotiateData.score !== undefined && negotiateData.aidReleased !== undefined) {
-                    updateGameState({
-                        score: negotiateData.score,
-                        aidReleased: negotiateData.aidReleased
-                    });
-                }
+                document.getElementById('endButton').disabled = false;
+                document.getElementById('sendButton').disabled = false;
+                document.getElementById('userInput').disabled = false;
                 
-                statusText.textContent = 'Response received';
-                return negotiateData;
+                // Show a starting message
+                addMessage('Trump', 'Hello President Zelensky! Great to meet with you today. We have a lot to discuss about Ukraine aid. As you know, I want to make sure we get a good deal. The best deal, really. No one makes better deals than me.');
+                
+                // Send the first message to the avatar
+                await makeAvatarSpeak('Hello President Zelensky! Great to meet with you today. We have a lot to discuss about Ukraine aid. As you know, I want to make sure we get a good deal. The best deal, really. No one makes better deals than me.');
             } catch (error) {
-                console.error('Failed to send message:', error);
-                statusText.textContent = `Error: ${error.message}`;
-                throw error;
+                console.error('Error starting session:', error);
+                document.getElementById('statusText').innerText = `Error: ${error.message}`;
+                document.getElementById('startButton').disabled = false;
             }
         }
         
-        // End the negotiation session
-        async function endNegotiation() {
+        // Make the avatar speak
+        async function makeAvatarSpeak(text) {
+            if (!sessionId) {
+                console.error('No active session');
+                return;
+            }
+            
             try {
-                if (!sessionId) return;
+                speaking = true;
+                showSpeechBubble(text);
                 
-                statusText.textContent = 'Ending negotiation...';
-                
-                // Disconnect from LiveKit if connected
-                if (livekitRoom) {
-                    try {
-                        await livekitRoom.disconnect();
-                        livekitRoom = null;
-                    } catch (e) {
-                        console.error('Error disconnecting from LiveKit:', e);
-                    }
-                }
-                
-                // End session on server
-                await fetch(`${API_BASE_URL}/end`, {
+                const response = await fetch('/api/heygen/speak', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        sessionId
+                        sessionId: sessionId,
+                        text: text
                     })
                 });
                 
-                // Reset UI
-                sessionId = null;
-                speechBubble.textContent = 'Negotiation ended';
-                startButton.disabled = false;
-                sendButton.disabled = true;
-                endButton.disabled = true;
-                
-                // Remove any avatar image if it exists
-                const img = document.getElementById('avatarImage');
-                if (img) img.remove();
-                
-                // Hide video element
-                avatarVideo.style.display = "none";
-                avatarVideo.srcObject = null;
-                
-                // Generate final assessment based on score
-                let finalAssessment = 'The negotiation has ended.';
-                const score = parseInt(scoreDisplay.textContent);
-                const aid = parseInt(aidDisplay.textContent);
-                
-                if (score >= 30 && aid >= 70) {
-                    finalAssessment = 'A tremendous deal was made! You successfully negotiated with Trump and secured significant military aid while making major concessions.';
-                } else if (score >= 20 && aid >= 50) {
-                    finalAssessment = 'A good deal was reached. Trump is satisfied with your cooperation and has released a considerable amount of military aid.';
-                } else if (score >= 10 && aid >= 30) {
-                    finalAssessment = 'A modest agreement was reached. Trump released some aid but remains skeptical about your commitment.';
-                } else {
-                    finalAssessment = 'The negotiation was not successful. Trump is disappointed with your lack of cooperation and has withheld most of the military aid.';
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
                 }
                 
-                addMessageToHistory('system', finalAssessment);
-                statusText.textContent = 'Negotiation ended';
+                const data = await response.json();
+                console.log('Speak response:', data);
+                
+                // Wait for the speaking to "finish" in mock mode
+                if (isMockMode) {
+                    // Simulate speech timing based on text length
+                    const speakingTime = Math.max(2000, text.length * 50);
+                    setTimeout(() => {
+                        speaking = false;
+                        hideSpeechBubble();
+                    }, speakingTime);
+                }
             } catch (error) {
-                console.error('Failed to end negotiation:', error);
-                statusText.textContent = `Error: ${error.message}`;
+                console.error('Error making avatar speak:', error);
+                speaking = false;
+                hideSpeechBubble();
             }
         }
         
-        // Update the speech bubble with Trump's response
-        function updateSpeechBubble(text) {
-            speechBubble.textContent = text;
+        // End the session
+        async function endSession() {
+            if (!sessionId) {
+                console.error('No active session');
+                return;
+            }
+            
+            try {
+                document.getElementById('endButton').disabled = true;
+                document.getElementById('sendButton').disabled = true;
+                document.getElementById('userInput').disabled = true;
+                document.getElementById('statusText').innerText = 'Ending session...';
+                
+                // Disconnect LiveKit if connected
+                if (room) {
+                    try {
+                        await room.disconnect();
+                        room = null;
+                    } catch (error) {
+                        console.error('Error disconnecting from LiveKit:', error);
+                    }
+                }
+                
+                // End the session
+                const response = await fetch('/api/heygen/end', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        sessionId: sessionId
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('End session response:', data);
+                
+                // Reset state
+                sessionId = null;
+                livekitToken = null;
+                livekitUrl = null;
+                isMockMode = false;
+                score = 50;
+                aidReleased = 0;
+                conversationHistory = [];
+                room = null;
+                speaking = false;
+                
+                // Update UI
+                document.getElementById('aidReleased').innerText = '0%';
+                document.getElementById('score').innerText = '50';
+                document.getElementById('scoreBar').style.width = '50%';
+                document.getElementById('messageContainer').innerHTML = '';
+                document.getElementById('avatarContainer').innerHTML = '';
+                document.getElementById('mockModeIndicator').style.display = 'none';
+                document.getElementById('speechBubble').style.display = 'none';
+                document.getElementById('statusText').innerText = 'Session ended';
+                document.getElementById('startButton').disabled = false;
+            } catch (error) {
+                console.error('Error ending session:', error);
+                document.getElementById('statusText').innerText = `Error: ${error.message}`;
+                document.getElementById('endButton').disabled = false;
+                document.getElementById('sendButton').disabled = false;
+                document.getElementById('userInput').disabled = false;
+            }
+        }
+        
+        // Connect to LiveKit
+        async function connectToLiveKit() {
+            // Create and connect to LiveKit room
+            room = new LivekitClient.Room({
+                adaptiveStream: true,
+                dynacast: true
+            });
+            
+            room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
+                console.log('Track subscribed:', track.kind, 'from participant:', participant.identity);
+                if (track.kind === 'video') {
+                    console.log('Attaching video track to element');
+                    track.attach(document.getElementById('avatarVideo'));
+                }
+            });
+            
+            room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+                console.log('Track unsubscribed:', track.kind);
+            });
+            
+            room.on(LivekitClient.RoomEvent.ConnectionStateChanged, (state) => {
+                console.log('LiveKit connection state changed:', state);
+            });
+            
+            room.on(LivekitClient.RoomEvent.Disconnected, () => {
+                console.log('Disconnected from LiveKit room');
+            });
+            
+            room.on(LivekitClient.RoomEvent.ParticipantConnected, (participant) => {
+                console.log('Participant connected:', participant.identity);
+            });
+            
+            room.on(LivekitClient.RoomEvent.RoomMetadataChanged, (metadata) => {
+                console.log('Room metadata changed:', metadata);
+            });
+            
+            room.on(LivekitClient.RoomEvent.MediaDevicesError, (error) => {
+                console.error('Media devices error:', error);
+            });
+            
+            // Connect to LiveKit using the provided token
+            await room.connect(livekitUrl, livekitToken);
+            console.log('Connected to LiveKit room successfully');
+        }
+        
+        // Show speech bubble
+        function showSpeechBubble(text) {
+            document.getElementById('speechBubble').style.display = 'block';
+            document.getElementById('speechBubble').innerText = text;
+        }
+        
+        // Hide speech bubble
+        function hideSpeechBubble() {
+            document.getElementById('speechBubble').style.display = 'none';
         }
         
         // Add a message to the conversation history
-        function addMessageToHistory(sender, text) {
+        function addMessage(sender, text) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${sender}-message`;
             messageDiv.textContent = text;
             
-            conversationHistory.appendChild(messageDiv);
-            conversationHistory.scrollTop = conversationHistory.scrollHeight;
-        }
-        
-        // Update the game state display
-        function updateGameState(gameState) {
-            if (!gameState) return;
-            
-            scoreDisplay.textContent = gameState.score;
-            aidDisplay.textContent = gameState.aidReleased;
-            aidProgress.style.width = `${gameState.aidReleased}%`;
-            
-            // Update concessions list
-            if (gameState.concessions && gameState.concessions.length > 0) {
-                concessionsList.innerHTML = '';
-                gameState.concessions.forEach(concession => {
-                    const li = document.createElement('li');
-                    li.textContent = concession;
-                    concessionsList.appendChild(li);
-                });
-            } else {
-                concessionsList.innerHTML = '<li>None yet</li>';
-            }
+            document.getElementById('conversationHistory').appendChild(messageDiv);
+            document.getElementById('conversationHistory').scrollTop = document.getElementById('conversationHistory').scrollHeight;
         }
         
         // Event Listeners
-        startButton.addEventListener('click', startNegotiation);
+        document.getElementById('startButton').addEventListener('click', startSession);
         
-        sendButton.addEventListener('click', async () => {
-            const text = userInput.value.trim();
+        document.getElementById('sendButton').addEventListener('click', async () => {
+            const text = document.getElementById('userInput').value.trim();
             if (!text) return;
             
             // Disable send button while processing
-            sendButton.disabled = true;
+            document.getElementById('sendButton').disabled = true;
             
             // Add user message to history
-            addMessageToHistory('user', text);
+            addMessage('user', text);
             
             try {
                 // Send message to API
-                const response = await sendMessage(text);
+                const response = await fetch('/api/negotiate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        sessionId: sessionId,
+                        message: text
+                    })
+                });
+                
+                const data = await response.json();
                 
                 // Update Trump's response
-                updateSpeechBubble(response.response);
-                addMessageToHistory('trump', response.response);
+                addMessage('trump', data.response);
+                
+                // Update game state UI
+                if (data.score !== undefined) {
+                    document.getElementById('scoreDisplay').textContent = data.score;
+                }
+                if (data.aidReleased !== undefined) {
+                    document.getElementById('aidDisplay').textContent = data.aidReleased;
+                    document.getElementById('aidProgress').style.width = `${data.aidReleased}%`;
+                }
                 
                 // Clear input
-                userInput.value = '';
+                document.getElementById('userInput').value = '';
             } catch (error) {
                 console.error('Error sending message:', error);
+                showSpeechBubble("Sorry, there was an error processing your message. Please try again.");
             } finally {
                 // Re-enable send button
-                sendButton.disabled = false;
+                document.getElementById('sendButton').disabled = false;
             }
         });
         
-        endButton.addEventListener('click', endNegotiation);
+        document.getElementById('endButton').addEventListener('click', endSession);
         
-        userInput.addEventListener('keypress', (e) => {
+        document.getElementById('userInput').addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                if (!sendButton.disabled) {
-                    sendButton.click();
+                if (!document.getElementById('sendButton').disabled) {
+                    document.getElementById('sendButton').click();
                 }
             }
         });
-        
-        // Initialize on page load
-        window.addEventListener('load', initialize);
     </script>
 </body>
 </html>
